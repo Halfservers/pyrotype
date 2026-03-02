@@ -1,0 +1,13 @@
+import type { DependencyList, MutableRefObject } from 'react';
+import { useRef } from 'react';
+import isEqual from 'react-fast-compare';
+
+export const useDeepMemoize = <T = DependencyList>(value: T): T => {
+  const ref: MutableRefObject<T | undefined> = useRef(undefined);
+
+  if (!isEqual(value, ref.current)) {
+    ref.current = value;
+  }
+
+  return ref.current as T;
+};
