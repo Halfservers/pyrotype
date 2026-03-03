@@ -1,204 +1,149 @@
-Welcome to your new TanStack Start app! 
+# Pyrotype
 
-# Getting Started
+A modern game server management panel built from the ground up as a clean-room rewrite of [Pyrodactyl](https://github.com/pyrodactyl-io/panel) (Pterodactyl fork).
 
-To run this application:
+Pyrotype replaces the original PHP/Laravel monolith with a standalone React frontend and Express API, delivering a leaner codebase (25% fewer lines, 23% fewer dependencies) with full TypeScript strict mode, modern tooling, and a polished UI powered by shadcn/ui.
+
+## Tech Stack
+
+### Frontend
+- **Framework**: [TanStack Start](https://tanstack.com/start) + React 19 + Vite 7
+- **Routing**: TanStack Router (file-based, fully type-safe)
+- **State**: Zustand 5 (global) + React Context (per-server)
+- **Forms**: React Hook Form + Zod validation
+- **UI**: [shadcn/ui](https://ui.shadcn.com) (28 components) + Tailwind CSS 4
+- **Terminal**: xterm.js 6 with fit, search, and web-links addons
+- **Editor**: CodeMirror 6
+- **Charts**: Chart.js + react-chartjs-2
+
+### Backend
+- **Runtime**: Node.js + Express 5
+- **ORM**: Prisma 7 with SQLite (via `@prisma/adapter-better-sqlite3`)
+- **Auth**: Express sessions + bcrypt + TOTP 2FA
+- **Queue**: BullMQ + Redis (ioredis)
+- **Tests**: Vitest 4 + Supertest (425 tests across 29 files)
+
+## Getting Started
+
+### Prerequisites
+- Node.js 20+
+- pnpm (recommended) or npm
+- Redis (for queue/session backend)
+
+### Installation
 
 ```bash
+git clone https://github.com/Halfservers/pyrotype.git
+cd pyrotype
 pnpm install
+
+cd server
+pnpm install
+cp .env.example .env    # configure DATABASE_URL, SESSION_SECRET, etc.
+npx prisma generate
+npx prisma db push
+```
+
+### Development
+
+```bash
+# Terminal 1 - Backend (port 3001)
+cd server
+npx tsx watch src/index.ts
+
+# Terminal 2 - Frontend (port 3007)
 pnpm dev
 ```
 
-# Building For Production
+Open [http://localhost:3007](http://localhost:3007) in your browser.
 
-To build this application for production:
+### Build
 
 ```bash
 pnpm build
 ```
 
-## Testing
-
-This project uses [Vitest](https://vitest.dev/) for testing. You can run the tests with:
+### Testing
 
 ```bash
-pnpm test
+cd server
+npx vitest run
 ```
 
-## Styling
+## Project Structure
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+```
+pyrotype/
+├── src/                          # Frontend source
+│   ├── routes/                   # File-based routing (TanStack Router)
+│   │   ├── __root.tsx            # Root layout
+│   │   ├── _authed.tsx           # Auth guard + client sidebar
+│   │   ├── _authed/
+│   │   │   ├── index.tsx         # Dashboard (server list)
+│   │   │   ├── account.tsx       # Account wrapper
+│   │   │   ├── account/          # Profile, API keys, SSH keys, activity
+│   │   │   └── server/$id.tsx    # Server layout + sidebar
+│   │   ├── _admin.tsx            # Admin guard + admin sidebar
+│   │   ├── _admin/admin/         # Admin pages (users, servers, nodes, locations)
+│   │   └── auth/                 # Login, 2FA, password reset
+│   ├── components/
+│   │   ├── ui/                   # shadcn/ui components (28)
+│   │   ├── server/               # Server page components (~60 files)
+│   │   ├── elements/             # Shared elements (spinner, editor, etc.)
+│   │   └── layout/               # Layout helpers
+│   ├── store/                    # Zustand store (5 slices)
+│   ├── lib/
+│   │   ├── api/                  # HTTP client + typed API functions
+│   │   ├── hooks/                # Custom hooks
+│   │   └── validators/           # Zod schemas
+│   └── styles.css                # Tailwind config + brand tokens
+├── server/                       # Backend source
+│   ├── src/
+│   │   ├── routes/               # Express route handlers
+│   │   ├── middleware/            # Auth, validation, rate limiting, error handling
+│   │   ├── services/             # Auth, Wings/Elytra daemon clients
+│   │   ├── config/               # Database, Redis, logger, queue
+│   │   ├── utils/                # Errors, fractal responses, pagination, crypto
+│   │   └── constants/            # Permission definitions
+│   ├── prisma/
+│   │   └── schema.prisma         # 41 models
+│   └── tests/                    # 425 tests (auth, client, admin, security, integration)
+├── docs/                         # Project documentation
+└── vite.config.ts                # Vite config with /api proxy
+```
 
-### Removing Tailwind CSS
+## Navigation
 
-If you prefer not to use Tailwind CSS:
+Pyrotype uses three independent [shadcn Sidebar](https://ui.shadcn.com/docs/components/sidebar) layouts:
 
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Uninstall the packages: `pnpm add @tailwindcss/vite tailwindcss --dev`
+**Client Sidebar** - Dashboard, account pages, and admin link (for root admins). Collapsible with icon-only mode and mobile drawer.
+
+**Server Sidebar** - Per-server navigation with 11 pages: console, files, databases, backups, network, users, schedules, startup, settings, activity, and software.
+
+**Admin Sidebar** - Separate admin section with its own layout and rose-colored accent theme. Manages users, servers, nodes, and locations. Requires root admin privileges.
+
+## API
+
+All backend routes are prefixed with `/api/`. The Vite dev server proxies `/api` requests to the Express backend at port 3001.
+
+| Route Group | Description |
+|---|---|
+| `/api/auth/*` | Authentication (login, 2FA, password reset) |
+| `/api/client/*` | Client API (servers, account, API keys, SSH keys, nests) |
+| `/api/client/servers/elytra/:server/*` | Daemon server operations (console, files, power, backups) |
+| `/api/application/*` | Admin API (CRUD for users, servers, nodes, locations, nests) |
+| `/api/remote/*` | Daemon-to-panel communication |
+
+All responses follow the Pterodactyl fractal format for API compatibility.
 
 ## Linting & Formatting
 
-
-This project uses [eslint](https://eslint.org/) and [prettier](https://prettier.io/) for linting and formatting. Eslint is configured using [tanstack/eslint-config](https://tanstack.com/config/latest/docs/eslint). The following scripts are available:
-
 ```bash
-pnpm lint
-pnpm format
-pnpm check
+pnpm lint          # ESLint
+pnpm format        # Prettier check
+pnpm check         # Prettier write + ESLint fix
 ```
 
+## License
 
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from "@tanstack/react-router";
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/react-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-  
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-  
-  return <div>Server time: {time}</div>
-}
-```
-
-## API Routes
-
-You can create API routes by using the `server` property in your route definitions:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
-
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+[Apache License 2.0](LICENSE)
