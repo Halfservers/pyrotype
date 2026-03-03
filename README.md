@@ -144,6 +144,25 @@ pnpm format        # Prettier check
 pnpm check         # Prettier write + ESLint fix
 ```
 
+## Cloudflare Workers Edition
+
+Want to run Pyrotype entirely on Cloudflare Workers with no VPS required? Check out the `cloudflare-workers` branch:
+
+```bash
+git clone -b cloudflare-workers https://github.com/Halfservers/pyrotype.git
+```
+
+That branch replaces the Node.js backend with a fully Cloudflare-native stack:
+- **Hono v4** instead of Express
+- **Cloudflare D1** instead of SQLite
+- **Cloudflare KV** instead of Redis
+- **Cloudflare Queues** instead of BullMQ
+- **Durable Objects** for WebSocket console proxy
+- **TanStack Form** instead of React Hook Form
+- **Native fetch()** instead of axios
+
+Everything runs in a single Cloudflare Worker — frontend SSR and backend API together.
+
 ## License
 
 [Apache License 2.0](LICENSE)
