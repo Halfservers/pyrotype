@@ -29,4 +29,17 @@ export function registerRoutes(app: Hono<AppType>) {
 
   // Application (admin) API
   app.route('/api/application', adminApp)
+
+  // Catch-all: return API info for non-API routes
+  app.all('*', (c) =>
+    c.json(
+      {
+        name: 'Pyrotype API',
+        version: '1.0.0',
+        docs: '/api/health',
+        endpoints: ['/api/auth', '/api/client', '/api/application', '/api/remote'],
+      },
+      404,
+    ),
+  )
 }
