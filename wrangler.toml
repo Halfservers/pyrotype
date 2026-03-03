@@ -13,7 +13,7 @@
 
 #:schema node_modules/wrangler/config-schema.json
 name = "pyrotype"
-main = "server/src/index.ts"
+main = "src/server.ts"
 compatibility_date = "2025-09-02"
 compatibility_flags = ["nodejs_compat"]
 account_id = "48d360a07bceff93b857ed6f95e9e95e"
