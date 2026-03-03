@@ -66,7 +66,7 @@ new_sqlite_classes = ["ServerConsole"]
 # Custom domain
 # ---------------------------------------------------------------------------
 [[routes]]
-pattern = "pyrotest.dracobyte.pro/*"
+pattern = "pyrotype.dracobyte.pro/*"
 zone_name = "dracobyte.pro"
 
 # ---------------------------------------------------------------------------
