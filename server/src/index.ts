@@ -2,6 +2,9 @@ import { createApp } from './app'
 import type { Env } from './types/env'
 import type { JobPayload } from './config/queue'
 
+// Re-export Durable Object class (required by wrangler for DO bindings)
+export { ServerConsole } from './durable-objects/ServerConsole'
+
 const app = createApp()
 
 export default {

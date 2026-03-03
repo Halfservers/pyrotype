@@ -16,6 +16,9 @@ name = "pyrotype"
 main = "server/src/index.ts"
 compatibility_date = "2025-09-02"
 compatibility_flags = ["nodejs_compat"]
+account_id = "48d360a07bceff93b857ed6f95e9e95e"
+workers_dev = true
+find_additional_modules = true
 
 # ---------------------------------------------------------------------------
 # D1 Database
@@ -25,7 +28,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "pyrotype-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "03c2833d-d532-4206-b45e-961934c913ef"
 
 # ---------------------------------------------------------------------------
 # KV Namespace — session storage
@@ -34,7 +37,7 @@ database_id = "REPLACE_WITH_D1_DATABASE_ID"
 #   wrangler kv namespace create SESSION_KV
 [[kv_namespaces]]
 binding = "SESSION_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "44e2009e282047ef8ac2bb2f19b5e69f"
 
 # ---------------------------------------------------------------------------
 # Queue — background job processing
@@ -58,6 +61,13 @@ class_name = "ServerConsole"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ServerConsole"]
+
+# ---------------------------------------------------------------------------
+# Custom domain
+# ---------------------------------------------------------------------------
+[[routes]]
+pattern = "pyrotest.dracobyte.pro/*"
+zone_name = "dracobyte.pro"
 
 # ---------------------------------------------------------------------------
 # Environment variables
