@@ -1,22 +1,20 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../../../config/database';
-import { fractalItem } from '../../../../utils/response';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../../../types/env'
+import { fractalItem } from '../../../../utils/response'
 
-export async function getServer(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const user = req.user!;
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
-    const isOwner = user.id === server.ownerId;
+export async function getServer(c: AppContext) {
+  const server = c.var.server!
+  const user = c.var.user!
 
-    res.json(fractalItem('server', {
-      ...server,
-      meta: {
-        is_server_owner: isOwner,
-        user_permissions: req.serverPermissions ?? [],
-      },
-    }));
-  } catch (err) {
-    next(err);
-  }
+  const isOwner = user.id === server.ownerId
+
+  return c.json(fractalItem('server', {
+    ...server,
+    meta: {
+      is_server_owner: isOwner,
+      user_permissions: c.var.serverPermissions ?? [],
+    },
+  }))
 }

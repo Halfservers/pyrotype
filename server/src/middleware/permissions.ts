@@ -1,77 +1,74 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../config/database';
-import { NotFoundError, ForbiddenError, ServerStateConflictError } from '../utils/errors';
+import type { MiddlewareHandler } from 'hono'
+import type { Env, HonoVariables } from '../types/env'
+import { NotFoundError, ForbiddenError, ServerStateConflictError } from '../utils/errors'
 
-export async function authenticateServerAccess(req: Request, _res: Response, next: NextFunction): Promise<void> {
-  try {
-    const serverId = req.params.server as string;
-    if (!serverId) return next(new NotFoundError('Server not specified.'));
+type AppEnv = { Bindings: Env; Variables: HonoVariables }
 
-    const server = await prisma.server.findFirst({
-      where: { OR: [{ uuid: serverId }, { uuidShort: serverId }, { id: isNaN(Number(serverId)) ? undefined : Number(serverId) }] },
-      include: { node: true, allocation: true, egg: true },
-    });
+export const authenticateServerAccess: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const serverId = c.req.param('server')
+  if (!serverId) throw new NotFoundError('Server not specified.')
 
-    if (!server) return next(new NotFoundError('Server not found.'));
+  const prisma = c.var.prisma
+  const server = await prisma.server.findFirst({
+    where: { OR: [{ uuid: serverId }, { uuidShort: serverId }, { id: isNaN(Number(serverId)) ? undefined : Number(serverId) }] },
+    include: { node: true, allocation: true, egg: true },
+  })
 
-    req.server = server as any;
+  if (!server) throw new NotFoundError('Server not found.')
 
-    // Check if user is owner or subuser
-    const user = req.user!;
-    if (server.ownerId === user.id) {
-      req.serverPermissions = ['*'];
-      return next();
-    }
+  c.set('server', server as HonoVariables['server'])
 
-    if (user.rootAdmin) {
-      req.serverPermissions = ['*'];
-      return next();
-    }
-
-    const subuser = await prisma.subuser.findFirst({
-      where: { serverId: server.id, userId: user.id },
-    });
-
-    if (!subuser) return next(new NotFoundError('Server not found.'));
-
-    req.serverPermissions = (subuser.permissions as string[]) || [];
-    next();
-  } catch (error) {
-    next(error);
+  const user = c.var.user!
+  if (server.ownerId === user.id || user.rootAdmin) {
+    c.set('serverPermissions', ['*'])
+    await next()
+    return
   }
+
+  const subuser = await prisma.subuser.findFirst({
+    where: { serverId: server.id, userId: user.id },
+  })
+
+  if (!subuser) throw new NotFoundError('Server not found.')
+
+  c.set('serverPermissions', (subuser.permissions as string[]) || [])
+  await next()
 }
 
-export function requirePermission(...permissions: string[]) {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    const userPerms = req.serverPermissions || [];
+export function requirePermission(...permissions: string[]): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const userPerms = c.var.serverPermissions || []
 
-    if (userPerms.includes('*')) return next();
+    if (userPerms.includes('*')) {
+      await next()
+      return
+    }
 
     const hasPermission = permissions.some((perm) => {
       if (perm.endsWith('.*')) {
-        const prefix = perm.slice(0, -1);
-        return userPerms.some((p) => p.startsWith(prefix) || p === '*');
+        const prefix = perm.slice(0, -1)
+        return userPerms.some((p) => p.startsWith(prefix) || p === '*')
       }
-      return userPerms.includes(perm);
-    });
+      return userPerms.includes(perm)
+    })
 
     if (!hasPermission) {
-      return next(new ForbiddenError('You do not have permission to perform this action.'));
+      throw new ForbiddenError('You do not have permission to perform this action.')
     }
-    next();
-  };
+    await next()
+  }
 }
 
-export function validateServerState(req: Request, _res: Response, next: NextFunction): void {
-  const server = req.server as any;
-  if (!server) return next(new NotFoundError('Server not found.'));
+export const validateServerState: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const server = c.var.server
+  if (!server) throw new NotFoundError('Server not found.')
 
   if (
     server.status === 'suspended' ||
     server.node?.maintenanceMode ||
     server.status === 'restoring_backup'
   ) {
-    return next(new ServerStateConflictError());
+    throw new ServerStateConflictError()
   }
-  next();
+  await next()
 }

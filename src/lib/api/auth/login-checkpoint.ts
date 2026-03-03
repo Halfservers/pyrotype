@@ -1,20 +1,14 @@
 import type { LoginResponse } from '@/lib/api/auth/login';
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 
-export default (token: string, code: string, recoveryToken?: string): Promise<LoginResponse> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post('/api/auth/login/checkpoint', {
-        confirmation_token: token,
-        authentication_code: code,
-        recovery_token: recoveryToken && recoveryToken.length > 0 ? recoveryToken : undefined,
-      })
-      .then((response) =>
-        resolve({
-          complete: response.data.data.complete,
-          intended: response.data.data.intended || undefined,
-        }),
-      )
-      .catch(reject);
+export default async (token: string, code: string, recoveryToken?: string): Promise<LoginResponse> => {
+  const data = await api.post<{ data: { complete: boolean; intended?: string } }>('/api/auth/login/checkpoint', {
+    confirmation_token: token,
+    authentication_code: code,
+    recovery_token: recoveryToken && recoveryToken.length > 0 ? recoveryToken : undefined,
   });
+  return {
+    complete: data.data.complete,
+    intended: data.data.intended || undefined,
+  };
 };

@@ -1,0 +1,15 @@
+{
+  "fileManager": "File Manager",
+  "upload": "Upload",
+  "download": "Download",
+  "rename": "Rename",
+  "compress": "Compress",
+  "decompress": "Decompress",
+  "delete": "Delete",
+  "chmod": "Change Permissions",
+  "createFile": "Create File",
+  "createFolder": "Create Folder",
+  "selectAll": "Select All",
+  "deselectAll": "Deselect All",
+  "massActions": "Mass Actions"
+}

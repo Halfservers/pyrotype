@@ -15,7 +15,7 @@ import FileNameModal from '@/components/server/files/file-name-modal';
 import { useFlash, usePermissions } from '@/lib/hooks';
 import { useServerStore } from '@/store/server';
 
-import { httpErrorToHuman } from '@/lib/api/http';
+import { httpErrorToHuman } from '@/lib/http';
 import { getFileContents, saveFileContents } from '@/lib/api/server/files';
 
 const Editor = lazy(() => import('@/components/elements/editor/Editor').catch(() => ({ default: () => <></> as any })));

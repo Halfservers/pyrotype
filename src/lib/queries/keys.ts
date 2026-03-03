@@ -1,7 +1,7 @@
 export const queryKeys = {
   servers: {
     all: ['servers'] as const,
-    list: (params?: any) => [...queryKeys.servers.all, 'list', params] as const,
+    list: (params?: Record<string, string | number | boolean>) => [...queryKeys.servers.all, 'list', params] as const,
     detail: (id: string) => [...queryKeys.servers.all, id] as const,
     backups: (id: string) => [...queryKeys.servers.detail(id), 'backups'] as const,
     databases: (id: string) => [...queryKeys.servers.detail(id), 'databases'] as const,

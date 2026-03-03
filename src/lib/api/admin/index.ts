@@ -1,23 +1,7 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
+import type { FractalItem, PaginatedResponse } from '@/types/api';
 
-export interface FractalItem<T> {
-  object: string;
-  attributes: T;
-}
-
-export interface PaginatedResponse<T> {
-  object: 'list';
-  data: FractalItem<T>[];
-  meta: {
-    pagination: {
-      total: number;
-      count: number;
-      per_page: number;
-      current_page: number;
-      total_pages: number;
-    };
-  };
-}
+export type { FractalItem, PaginatedResponse } from '@/types/api';
 
 export interface AdminUser {
   id: number;
@@ -110,10 +94,10 @@ const BASE = '/api/application';
 // ── Users ─────────────────────────────────────────────────────────
 
 export const getUsers = (page = 1) =>
-  http.get<PaginatedResponse<AdminUser>>(`${BASE}/users`, { params: { page } }).then((r) => r.data);
+  api.get<PaginatedResponse<AdminUser>>(`${BASE}/users`, { page });
 
 export const getUser = (id: number) =>
-  http.get<FractalItem<AdminUser>>(`${BASE}/users/${id}`).then((r) => r.data);
+  api.get<FractalItem<AdminUser>>(`${BASE}/users/${id}`);
 
 export const createUser = (data: {
   username: string;
@@ -122,69 +106,69 @@ export const createUser = (data: {
   name_last?: string;
   password?: string;
   root_admin?: boolean;
-}) => http.post<FractalItem<AdminUser>>(`${BASE}/users`, data).then((r) => r.data);
+}) => api.post<FractalItem<AdminUser>>(`${BASE}/users`, data);
 
 export const updateUser = (id: number, data: Record<string, unknown>) =>
-  http.patch<FractalItem<AdminUser>>(`${BASE}/users/${id}`, data).then((r) => r.data);
+  api.patch<FractalItem<AdminUser>>(`${BASE}/users/${id}`, data);
 
 export const deleteUser = (id: number) =>
-  http.delete(`${BASE}/users/${id}`);
+  api.delete(`${BASE}/users/${id}`);
 
 // ── Servers ───────────────────────────────────────────────────────
 
 export const getServers = (page = 1) =>
-  http.get<PaginatedResponse<AdminServer>>(`${BASE}/servers`, { params: { page } }).then((r) => r.data);
+  api.get<PaginatedResponse<AdminServer>>(`${BASE}/servers`, { page });
 
 export const getServer = (id: number) =>
-  http.get<FractalItem<AdminServer>>(`${BASE}/servers/${id}`).then((r) => r.data);
+  api.get<FractalItem<AdminServer>>(`${BASE}/servers/${id}`);
 
 export const suspendServer = (id: number) =>
-  http.post(`${BASE}/servers/${id}/suspend`);
+  api.post(`${BASE}/servers/${id}/suspend`);
 
 export const unsuspendServer = (id: number) =>
-  http.post(`${BASE}/servers/${id}/unsuspend`);
+  api.post(`${BASE}/servers/${id}/unsuspend`);
 
 export const reinstallServer = (id: number) =>
-  http.post(`${BASE}/servers/${id}/reinstall`);
+  api.post(`${BASE}/servers/${id}/reinstall`);
 
 export const deleteServer = (id: number, force = false) =>
-  http.delete(`${BASE}/servers/${id}${force ? '/force' : ''}`);
+  api.delete(`${BASE}/servers/${id}${force ? '/force' : ''}`);
 
 // ── Nodes ─────────────────────────────────────────────────────────
 
 export const getNodes = (page = 1) =>
-  http.get<PaginatedResponse<AdminNode>>(`${BASE}/nodes`, { params: { page } }).then((r) => r.data);
+  api.get<PaginatedResponse<AdminNode>>(`${BASE}/nodes`, { page });
 
 export const getNode = (id: number) =>
-  http.get<FractalItem<AdminNode>>(`${BASE}/nodes/${id}`).then((r) => r.data);
+  api.get<FractalItem<AdminNode>>(`${BASE}/nodes/${id}`);
 
 export const createNode = (data: Record<string, unknown>) =>
-  http.post<FractalItem<AdminNode>>(`${BASE}/nodes`, data).then((r) => r.data);
+  api.post<FractalItem<AdminNode>>(`${BASE}/nodes`, data);
 
 export const updateNode = (id: number, data: Record<string, unknown>) =>
-  http.patch<FractalItem<AdminNode>>(`${BASE}/nodes/${id}`, data).then((r) => r.data);
+  api.patch<FractalItem<AdminNode>>(`${BASE}/nodes/${id}`, data);
 
 export const deleteNode = (id: number) =>
-  http.delete(`${BASE}/nodes/${id}`);
+  api.delete(`${BASE}/nodes/${id}`);
 
 // ── Locations ─────────────────────────────────────────────────────
 
 export const getLocations = (page = 1) =>
-  http.get<PaginatedResponse<AdminLocation>>(`${BASE}/locations`, { params: { page } }).then((r) => r.data);
+  api.get<PaginatedResponse<AdminLocation>>(`${BASE}/locations`, { page });
 
 export const createLocation = (data: { short: string; long?: string }) =>
-  http.post<FractalItem<AdminLocation>>(`${BASE}/locations`, data).then((r) => r.data);
+  api.post<FractalItem<AdminLocation>>(`${BASE}/locations`, data);
 
 export const updateLocation = (id: number, data: { short?: string; long?: string }) =>
-  http.patch<FractalItem<AdminLocation>>(`${BASE}/locations/${id}`, data).then((r) => r.data);
+  api.patch<FractalItem<AdminLocation>>(`${BASE}/locations/${id}`, data);
 
 export const deleteLocation = (id: number) =>
-  http.delete(`${BASE}/locations/${id}`);
+  api.delete(`${BASE}/locations/${id}`);
 
 // ── Nests ─────────────────────────────────────────────────────────
 
 export const getNests = (page = 1) =>
-  http.get<PaginatedResponse<AdminNest>>(`${BASE}/nests`, { params: { page } }).then((r) => r.data);
+  api.get<PaginatedResponse<AdminNest>>(`${BASE}/nests`, { page });
 
 // ── Overview counts ───────────────────────────────────────────────
 

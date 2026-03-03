@@ -1,8 +1,10 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../config/database';
-import { fractalItem, fractalPaginated } from '../../utils/response';
-import { paginationSchema, getPaginationOffset } from '../../utils/pagination';
-import { NotFoundError } from '../../utils/errors';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../types/env'
+import { fractalItem, fractalPaginated } from '../../utils/response'
+import { paginationSchema, getPaginationOffset } from '../../utils/pagination'
+import { NotFoundError } from '../../utils/errors'
+
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
 function transformNest(nest: any) {
   return {
@@ -13,33 +15,30 @@ function transformNest(nest: any) {
     description: nest.description,
     created_at: nest.createdAt.toISOString(),
     updated_at: nest.updatedAt.toISOString(),
-  };
-}
-
-export async function index(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const pagination = paginationSchema.parse(req.query);
-    const { skip, take } = getPaginationOffset(pagination);
-
-    const [nests, total] = await Promise.all([
-      prisma.nest.findMany({ skip, take, orderBy: { id: 'asc' } }),
-      prisma.nest.count(),
-    ]);
-
-    res.json(fractalPaginated('nest', nests.map(transformNest), total, pagination.page, pagination.per_page));
-  } catch (err) {
-    next(err);
   }
 }
 
-export async function view(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const id = parseInt(req.params.id as string, 10);
-    const nest = await prisma.nest.findUnique({ where: { id } });
-    if (!nest) throw new NotFoundError('Nest not found');
+export async function index(c: AppContext) {
+  const prisma = c.var.prisma
+  const pagination = paginationSchema.parse({
+    page: c.req.query('page'),
+    per_page: c.req.query('per_page'),
+  })
+  const { skip, take } = getPaginationOffset(pagination)
 
-    res.json(fractalItem('nest', transformNest(nest)));
-  } catch (err) {
-    next(err);
-  }
+  const [nests, total] = await Promise.all([
+    prisma.nest.findMany({ skip, take, orderBy: { id: 'asc' } }),
+    prisma.nest.count(),
+  ])
+
+  return c.json(fractalPaginated('nest', nests.map(transformNest), total, pagination.page, pagination.per_page))
+}
+
+export async function view(c: AppContext) {
+  const prisma = c.var.prisma
+  const id = parseInt(c.req.param('id'), 10)
+  const nest = await prisma.nest.findUnique({ where: { id } })
+  if (!nest) throw new NotFoundError('Nest not found')
+
+  return c.json(fractalItem('nest', transformNest(nest)))
 }

@@ -1,63 +1,56 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../config/database';
-import { NotFoundError } from '../../utils/errors';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../types/env'
+import { NotFoundError } from '../../utils/errors'
 
-export async function suspend(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const id = parseInt(req.params.id as string, 10);
-    const server = await prisma.server.findUnique({ where: { id } });
-    if (!server) throw new NotFoundError('Server not found');
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
-    await prisma.server.update({
-      where: { id },
-      data: { status: 'suspended' },
-    });
+export async function suspend(c: AppContext) {
+  const prisma = c.var.prisma
+  const id = parseInt(c.req.param('id'), 10)
+  const server = await prisma.server.findUnique({ where: { id } })
+  if (!server) throw new NotFoundError('Server not found')
 
-    // TODO: notify daemon to suspend the server
+  await prisma.server.update({
+    where: { id },
+    data: { status: 'suspended' },
+  })
 
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
+  // TODO: notify daemon to suspend the server
+
+  return c.body(null, 204)
 }
 
-export async function unsuspend(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const id = parseInt(req.params.id as string, 10);
-    const server = await prisma.server.findUnique({ where: { id } });
-    if (!server) throw new NotFoundError('Server not found');
+export async function unsuspend(c: AppContext) {
+  const prisma = c.var.prisma
+  const id = parseInt(c.req.param('id'), 10)
+  const server = await prisma.server.findUnique({ where: { id } })
+  if (!server) throw new NotFoundError('Server not found')
 
-    await prisma.server.update({
-      where: { id },
-      data: { status: null },
-    });
+  await prisma.server.update({
+    where: { id },
+    data: { status: null },
+  })
 
-    // TODO: notify daemon to unsuspend the server
+  // TODO: notify daemon to unsuspend the server
 
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
+  return c.body(null, 204)
 }
 
-export async function reinstall(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const id = parseInt(req.params.id as string, 10);
-    const server = await prisma.server.findUnique({
-      where: { id },
-      include: { node: true },
-    });
-    if (!server) throw new NotFoundError('Server not found');
+export async function reinstall(c: AppContext) {
+  const prisma = c.var.prisma
+  const id = parseInt(c.req.param('id'), 10)
+  const server = await prisma.server.findUnique({
+    where: { id },
+    include: { node: true },
+  })
+  if (!server) throw new NotFoundError('Server not found')
 
-    await prisma.server.update({
-      where: { id },
-      data: { status: 'installing', installedAt: null },
-    });
+  await prisma.server.update({
+    where: { id },
+    data: { status: 'installing', installedAt: null },
+  })
 
-    // TODO: call daemon reinstall endpoint
+  // TODO: call daemon reinstall endpoint
 
-    res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
+  return c.body(null, 204)
 }

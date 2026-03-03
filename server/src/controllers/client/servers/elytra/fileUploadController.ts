@@ -1,34 +1,29 @@
-import type { Request, Response, NextFunction } from 'express';
-import crypto from 'crypto';
-import { config } from '../../../../config';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../../../types/env'
+import { hmacSign } from '../../../../utils/crypto'
 
-export async function getUploadUrl(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const user = req.user!;
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
-    // Generate a signed upload token for the daemon.
-    // In production, this creates a JWT with server_uuid claim
-    // that the daemon validates before accepting the upload.
-    const payload = {
-      user_id: user.id,
-      server_uuid: server.uuid,
-      exp: Math.floor(Date.now() / 1000) + 900, // 15 minutes
-    };
+export async function getUploadUrl(c: AppContext) {
+  const server = c.var.server!
+  const user = c.var.user!
 
-    const token = crypto
-      .createHmac('sha256', config.JWT_SECRET)
-      .update(JSON.stringify(payload))
-      .digest('hex');
-
-    // In production, the URL would come from the node's connection address.
-    const url = `/upload/file?token=${token}`;
-
-    res.json({
-      object: 'signed_url',
-      attributes: { url },
-    });
-  } catch (err) {
-    next(err);
+  // Generate a signed upload token for the daemon.
+  // In production, this creates a JWT with server_uuid claim
+  // that the daemon validates before accepting the upload.
+  const payload = {
+    user_id: user.id,
+    server_uuid: server.uuid,
+    exp: Math.floor(Date.now() / 1000) + 900, // 15 minutes
   }
+
+  const token = await hmacSign(c.env.APP_KEY, JSON.stringify(payload))
+
+  // In production, the URL would come from the node's connection address.
+  const url = `/upload/file?token=${token}`
+
+  return c.json({
+    object: 'signed_url',
+    attributes: { url },
+  })
 }

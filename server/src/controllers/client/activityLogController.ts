@@ -1,5 +1,7 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../config/database';
+import type { Context } from 'hono';
+import type { Env, HonoVariables } from '../../types/env';
+
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>;
 
 function transformActivityLog(log: {
   id: bigint;
@@ -29,46 +31,43 @@ function transformActivityLog(log: {
   };
 }
 
-export async function index(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const user = req.user!;
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const perPage = Math.min(100, Math.max(1, parseInt(req.query.per_page as string, 10) || 25));
+export async function index(c: AppContext) {
+  const user = c.var.user!;
+  const prisma = c.var.prisma;
+  const page = Math.max(1, parseInt(c.req.query('page') ?? '', 10) || 1);
+  const perPage = Math.min(100, Math.max(1, parseInt(c.req.query('per_page') ?? '', 10) || 25));
 
-    const filterEvent = req.query['filter[event]'] as string | undefined;
+  const filterEvent = c.req.query('filter[event]');
 
-    const where = {
-      actorType: 'Pterodactyl\\Models\\User',
-      actorId: BigInt(user.id),
-      ...(filterEvent ? { event: { contains: filterEvent } } : {}),
-    };
+  const where = {
+    actorType: 'Pterodactyl\\Models\\User',
+    actorId: BigInt(user.id),
+    ...(filterEvent ? { event: { contains: filterEvent } } : {}),
+  };
 
-    const [total, logs] = await Promise.all([
-      prisma.activityLog.count({ where }),
-      prisma.activityLog.findMany({
-        where,
-        orderBy: { timestamp: 'desc' },
-        take: perPage,
-        skip: (page - 1) * perPage,
-      }),
-    ]);
+  const [total, logs] = await Promise.all([
+    prisma.activityLog.count({ where }),
+    prisma.activityLog.findMany({
+      where,
+      orderBy: { timestamp: 'desc' },
+      take: perPage,
+      skip: (page - 1) * perPage,
+    }),
+  ]);
 
-    const totalPages = Math.ceil(total / perPage);
+  const totalPages = Math.ceil(total / perPage);
 
-    res.json({
-      object: 'list',
-      data: logs.map(transformActivityLog),
-      meta: {
-        pagination: {
-          total,
-          count: logs.length,
-          per_page: perPage,
-          current_page: page,
-          total_pages: totalPages,
-        },
+  return c.json({
+    object: 'list',
+    data: logs.map(transformActivityLog),
+    meta: {
+      pagination: {
+        total,
+        count: logs.length,
+        per_page: perPage,
+        current_page: page,
+        total_pages: totalPages,
       },
-    });
-  } catch (err) {
-    next(err);
-  }
+    },
+  });
 }

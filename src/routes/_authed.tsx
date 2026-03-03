@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 
 import { useAppStore } from '@/store'
-import http from '@/lib/api/http'
+import { api } from '@/lib/http'
 import {
   SidebarProvider,
   Sidebar,
@@ -47,7 +47,7 @@ function AuthedLayout() {
 
   const handleLogout = async () => {
     try {
-      await http.post('/api/auth/logout')
+      await api.post('/api/auth/logout')
     } catch {
       // ignore
     }

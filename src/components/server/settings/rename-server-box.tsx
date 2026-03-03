@@ -1,13 +1,11 @@
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Label } from '@/components/ui/label';
 
 import { useServerStore } from '@/store/server';
-import { renameServerSchema, type RenameServerData } from '@/lib/validators';
 import { useRenameServerMutation } from '@/lib/queries';
 import { useFlashKey } from '@/lib/hooks';
 
@@ -16,65 +14,67 @@ const RenameServerBox = () => {
   const { clearFlashes, clearAndAddHttpError } = useFlashKey('settings');
   const renameMutation = useRenameServerMutation(server.id);
 
-  const form = useForm<RenameServerData>({
-    resolver: zodResolver(renameServerSchema),
+  const form = useForm({
     defaultValues: {
       name: server.name,
       description: server.description || '',
     },
+    onSubmit: ({ value }) => {
+      clearFlashes();
+      toast('Updating server details...');
+
+      renameMutation.mutate(
+        { name: value.name, description: value.description ?? undefined },
+        {
+          onSuccess: () => toast.success('Server details updated!'),
+          onError: (error) => clearAndAddHttpError(error),
+        },
+      );
+    },
   });
-
-  const onSubmit = (values: RenameServerData) => {
-    clearFlashes();
-    toast('Updating server details...');
-
-    renameMutation.mutate(
-      { name: values.name, description: values.description ?? undefined },
-      {
-        onSuccess: () => toast.success('Server details updated!'),
-        onError: (error) => clearAndAddHttpError(error),
-      },
-    );
-  };
 
   return (
     <div className='bg-[#ffffff09] border border-[#ffffff11] rounded-2xl p-6'>
       <h3 className='text-lg font-semibold text-neutral-200 mb-4'>Server Details</h3>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className='flex flex-col gap-4'>
-          <FormField
-            control={form.control}
-            name='name'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Server Name</FormLabel>
-                <FormControl>
-                  <Input {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name='description'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Server Description</FormLabel>
-                <FormControl>
-                  <Input {...field} value={field.value ?? ''} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <div className='mt-6 text-right'>
-            <Button type='submit' disabled={renameMutation.isPending}>
-              Save
-            </Button>
-          </div>
-        </form>
-      </Form>
+      <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }} className='flex flex-col gap-4'>
+        <form.Field
+          name='name'
+          children={(field) => (
+            <div className='space-y-2'>
+              <Label>Server Name</Label>
+              <Input
+                value={field.state.value}
+                onChange={(e) => field.handleChange(e.target.value)}
+                onBlur={field.handleBlur}
+              />
+              {field.state.meta.errors.length > 0 && (
+                <p className='text-sm text-destructive'>{field.state.meta.errors.map(String).join(', ')}</p>
+              )}
+            </div>
+          )}
+        />
+        <form.Field
+          name='description'
+          children={(field) => (
+            <div className='space-y-2'>
+              <Label>Server Description</Label>
+              <Input
+                value={field.state.value ?? ''}
+                onChange={(e) => field.handleChange(e.target.value)}
+                onBlur={field.handleBlur}
+              />
+              {field.state.meta.errors.length > 0 && (
+                <p className='text-sm text-destructive'>{field.state.meta.errors.map(String).join(', ')}</p>
+              )}
+            </div>
+          )}
+        />
+        <div className='mt-6 text-right'>
+          <Button type='submit' disabled={renameMutation.isPending}>
+            Save
+          </Button>
+        </div>
+      </form>
     </div>
   );
 };

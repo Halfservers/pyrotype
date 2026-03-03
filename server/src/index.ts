@@ -1,9 +1,21 @@
-import { app } from './app';
-import { config } from './config';
-import { logger } from './config/logger';
+import { createApp } from './app'
+import type { Env } from './types/env'
+import type { JobPayload } from './config/queue'
 
-const PORT = config.PORT;
+const app = createApp()
 
-app.listen(PORT, () => {
-  logger.info(`Pyrotype server running on port ${PORT}`);
-});
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return app.fetch(request, env, ctx)
+  },
+  async queue(batch: MessageBatch<JobPayload>, env: Env): Promise<void> {
+    for (const msg of batch.messages) {
+      try {
+        console.log(`Processing job: ${msg.body.type}`)
+        msg.ack()
+      } catch {
+        msg.retry()
+      }
+    }
+  },
+}

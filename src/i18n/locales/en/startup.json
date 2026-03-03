@@ -1,0 +1,8 @@
+{
+  "startupCommand": "Startup Command",
+  "dockerImage": "Docker Image",
+  "variables": "Variables",
+  "defaultValue": "Default Value",
+  "serverValue": "Server Value",
+  "envVariable": "Environment Variable"
+}

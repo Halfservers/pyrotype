@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -10,6 +9,11 @@ import { getFileUploadUrl } from '@/lib/api/server/files';
 function isFileOrDirectory(event: DragEvent): boolean {
   if (!event.dataTransfer?.types) return false;
   return event.dataTransfer.types.some((value) => value.toLowerCase() === 'files');
+}
+
+function getCookie(name: string): string | undefined {
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
 }
 
 const UploadButton = () => {
@@ -54,19 +58,27 @@ const UploadButton = () => {
     }
 
     const uploads = list.map((file) => {
-      const controller = new AbortController();
       return () =>
-        getFileUploadUrl(uuid).then((url: string) =>
-          axios.post(
-            url,
-            { files: file },
+        getFileUploadUrl(uuid).then((url: string) => {
+          const formData = new FormData();
+          formData.append('files', file);
+
+          const headers: Record<string, string> = {};
+          const csrfToken = getCookie('XSRF-TOKEN');
+          if (csrfToken) {
+            headers['X-XSRF-TOKEN'] = csrfToken;
+          }
+
+          return fetch(
+            url + '?' + new URLSearchParams({ directory }).toString(),
             {
-              signal: controller.signal,
-              headers: { 'Content-Type': 'multipart/form-data' },
-              params: { directory },
+              method: 'POST',
+              body: formData,
+              credentials: 'include',
+              headers,
             },
-          ),
-        );
+          );
+        });
     });
 
     Promise.all(uploads.map((fn) => fn())).catch((error) => {

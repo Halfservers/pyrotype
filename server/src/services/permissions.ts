@@ -1,19 +1,19 @@
-import { prisma } from '../config/database';
-import { SYSTEM_PERMISSIONS } from '../constants/permissions';
+import type { PrismaClient } from '../generated/prisma/client'
+import { SYSTEM_PERMISSIONS } from '../constants/permissions'
 
 interface ServerLike {
-  id: number;
-  ownerId: number;
+  id: number
+  ownerId: number
 }
 
 interface UserLike {
-  id: number;
-  rootAdmin: boolean;
+  id: number
+  rootAdmin: boolean
 }
 
-export async function getUserPermissions(server: ServerLike, user: UserLike): Promise<string[]> {
+export async function getUserPermissions(prisma: PrismaClient, server: ServerLike, user: UserLike): Promise<string[]> {
   if (user.rootAdmin || user.id === server.ownerId) {
-    return getAllPermissions();
+    return getAllPermissions()
   }
 
   const subuser = await prisma.subuser.findUnique({
@@ -23,22 +23,22 @@ export async function getUserPermissions(server: ServerLike, user: UserLike): Pr
         serverId: server.id,
       },
     },
-  });
+  })
 
   if (!subuser) {
-    return [];
+    return []
   }
 
-  const permissions = subuser.permissions as string[];
-  return Array.isArray(permissions) ? permissions : [];
+  const permissions = subuser.permissions as string[]
+  return Array.isArray(permissions) ? permissions : []
 }
 
 function getAllPermissions(): string[] {
-  const all: string[] = [];
+  const all: string[] = []
   for (const [prefix, group] of Object.entries(SYSTEM_PERMISSIONS)) {
     for (const key of Object.keys(group.keys)) {
-      all.push(`${prefix}.${key}`);
+      all.push(`${prefix}.${key}`)
     }
   }
-  return all;
+  return all
 }

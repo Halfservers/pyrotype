@@ -1,5 +1,5 @@
 import { createContext, lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
 
 import { ServerContentBlock } from '@/components/layout/page-header';
@@ -20,7 +20,7 @@ import { SocketEvent } from '@/lib/websocket/events';
 import { useServerStore } from '@/store/server';
 import { useAppStore } from '@/store';
 
-import { httpErrorToHuman } from '@/lib/api/http';
+import { httpErrorToHuman } from '@/lib/http';
 import { deleteAllServerBackups } from '@/lib/api/server/backups';
 
 import { useUnifiedBackups } from './use-unified-backups';
@@ -72,10 +72,12 @@ const BackupContainer = () => {
   const uuid = useServerStore((state) => state.server?.uuid ?? '');
   const backupLimit = useServerStore((state) => state.server?.featureLimits?.backups ?? 0);
 
-  const { register, handleSubmit, reset, formState: { isSubmitting }, setValue, watch } = useForm<BackupValues>({
+  const form = useForm({
     defaultValues: { name: '', ignored: '', isLocked: false },
+    onSubmit: async ({ value }) => {
+      await submitBackup(value);
+    },
   });
-  const isLocked = watch('isLocked');
 
   useEffect(() => {
     clearFlashes('backups:create');
@@ -87,7 +89,7 @@ const BackupContainer = () => {
       await createBackup(values.name, values.ignored, values.isLocked);
       clearFlashes('backups');
       setCreateModalVisible(false);
-      reset();
+      form.reset();
     } catch (error) {
       clearAndAddHttpError({ key: 'backups:create', error });
     }
@@ -134,8 +136,8 @@ const BackupContainer = () => {
     setIsBulkDeleting(true);
     clearFlashes('backups:bulk_delete');
     try {
-      const http = (await import('@/lib/api/http')).default;
-      await http.post(`/api/client/servers/${uuid}/backups/bulk-delete`, {
+      const { api: httpApi } = await import('@/lib/http');
+      await httpApi.post(`/api/client/servers/${uuid}/backups/bulk-delete`, {
         backup_uuids: Array.from(selectedBackups),
         password: bulkDeletePassword,
         ...(hasTwoFactor ? { totp_code: bulkDeleteTotpCode } : {}),
@@ -192,27 +194,47 @@ const BackupContainer = () => {
       </div>
 
       {/* Create modal */}
-      <Dialog open={createModalVisible} onOpenChange={(open) => { if (!open) { setCreateModalVisible(false); reset(); } }}>
+      <Dialog open={createModalVisible} onOpenChange={(open) => { if (!open) { setCreateModalVisible(false); form.reset(); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Create server backup</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit(submitBackup)} className='flex flex-col gap-4'>
-            <div>
-              <Label htmlFor='backup-name'>Backup name</Label>
-              <Input id='backup-name' {...register('name')} />
-            </div>
-            <div>
-              <Label htmlFor='backup-ignored'>Ignored Files & Directories</Label>
-              <Textarea id='backup-ignored' {...register('ignored')} rows={4} />
-            </div>
+          <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }} className='flex flex-col gap-4'>
+            <form.Field
+              name='name'
+              children={(field) => (
+                <div>
+                  <Label htmlFor='backup-name'>Backup name</Label>
+                  <Input id='backup-name' value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} />
+                </div>
+              )}
+            />
+            <form.Field
+              name='ignored'
+              children={(field) => (
+                <div>
+                  <Label htmlFor='backup-ignored'>Ignored Files & Directories</Label>
+                  <Textarea id='backup-ignored' value={field.state.value} onChange={(e) => field.handleChange(e.target.value)} onBlur={field.handleBlur} rows={4} />
+                </div>
+              )}
+            />
             {canDelete && (
-              <div className='flex items-center gap-2'>
-                <Switch checked={isLocked} onCheckedChange={(checked) => setValue('isLocked', checked)} />
-                <Label>Locked (prevents deletion)</Label>
-              </div>
+              <form.Field
+                name='isLocked'
+                children={(field) => (
+                  <div className='flex items-center gap-2'>
+                    <Switch checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
+                    <Label>Locked (prevents deletion)</Label>
+                  </div>
+                )}
+              />
             )}
-            <div className='flex justify-end'>
-              <Button type='submit' disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Start backup'}</Button>
-            </div>
+            <form.Subscribe
+              selector={(s) => s.isSubmitting}
+              children={(isSubmitting) => (
+                <div className='flex justify-end'>
+                  <Button type='submit' disabled={isSubmitting}>{isSubmitting ? 'Creating...' : 'Start backup'}</Button>
+                </div>
+              )}
+            />
           </form>
         </DialogContent>
       </Dialog>

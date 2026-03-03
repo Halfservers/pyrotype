@@ -6,9 +6,12 @@ import {
 } from 'lucide-react'
 
 import getServer from '@/lib/api/server/get-server'
-import { httpErrorToHuman } from '@/lib/api/http'
+import { httpErrorToHuman } from '@/lib/http'
 import { ServerStoreProvider } from '@/store/ServerStoreProvider'
 import { useServerStore } from '@/store/server'
+import ConflictStateRenderer from '@/components/server/ConflictStateRenderer'
+import TransferListener from '@/components/server/transfer/TransferListener'
+import InstallListener from '@/components/server/InstallListener'
 import {
   SidebarProvider,
   Sidebar,
@@ -140,7 +143,11 @@ function ServerLayoutInner() {
           <Separator orientation="vertical" className="mr-2 h-4 bg-white/[0.06]" />
           <span className="text-sm font-medium text-zinc-300 truncate">{server.name}</span>
         </header>
-        <Outlet />
+        <TransferListener />
+        <ConflictStateRenderer>
+          <Outlet />
+        </ConflictStateRenderer>
+        <InstallListener />
       </SidebarInset>
     </SidebarProvider>
   )
@@ -152,7 +159,7 @@ function ServerSidebar({
   pathname,
 }: {
   id: string
-  server: any
+  server: import('@/store/server').Server
   pathname: string
 }) {
   const basePath = `/server/${id}`
@@ -169,7 +176,7 @@ function ServerSidebar({
         <div className="px-1 group-data-[collapsible=icon]:hidden">
           <p className="font-semibold text-white text-sm truncate">{server.name}</p>
           <div className="mt-1.5">
-            <StatusBadge status={(server as any).status} />
+            <StatusBadge status={server.status} />
           </div>
         </div>
       </SidebarHeader>

@@ -1,33 +1,36 @@
-import { Router } from 'express';
-import { isAuthenticated } from '../../middleware/auth';
-import * as clientController from '../../controllers/client/clientController';
-import * as serverController from '../../controllers/client/serverController';
-import * as nestController from '../../controllers/client/nestController';
-import { wingsServerRoutes } from './servers/wings';
-import { elytraServerRoutes } from './servers/elytra';
+import { Hono } from 'hono'
+import type { Env, HonoVariables } from '../../types/env'
+import { isAuthenticated } from '../../middleware/auth'
+import * as clientController from '../../controllers/client/clientController'
+import * as serverController from '../../controllers/client/serverController'
+import * as nestController from '../../controllers/client/nestController'
+import { wingsServerApp } from './servers/wings'
+import { elytraServerApp } from './servers/elytra'
 
-export const clientRoutes = Router();
+type AppType = { Bindings: Env; Variables: HonoVariables }
+
+export const clientApp = new Hono<AppType>()
 
 // All client routes require authentication
-clientRoutes.use(isAuthenticated);
+clientApp.use('*', isAuthenticated)
 
 // Root client endpoints
-clientRoutes.get('/', clientController.index);
-clientRoutes.get('/permissions', clientController.permissions);
-clientRoutes.get('/version', (_req, res) => {
-  res.json({ version: process.env.APP_VERSION || '1.0.0' });
-});
+clientApp.get('/', clientController.index)
+clientApp.get('/permissions', clientController.permissions)
+clientApp.get('/version', (c) => {
+  return c.json({ version: c.env.APP_VERSION || '1.0.0' })
+})
 
 // Nests
-clientRoutes.get('/nests', nestController.index);
-clientRoutes.get('/nests/:nest', nestController.view);
+clientApp.get('/nests', nestController.index)
+clientApp.get('/nests/:nest', nestController.view)
 
 // Server detail and resources (daemon-agnostic)
-clientRoutes.get('/servers/:server', serverController.index);
-clientRoutes.get('/servers/:server/resources', serverController.resources);
+clientApp.get('/servers/:server', serverController.index)
+clientApp.get('/servers/:server/resources', serverController.resources)
 
-// Wings daemon server routes: /api/client/servers/wings/:server/...
-clientRoutes.use('/servers/wings', wingsServerRoutes);
+// Wings daemon server routes: /api/client/servers/wings/...
+clientApp.route('/servers/wings', wingsServerApp)
 
-// Elytra daemon server routes: /api/client/servers/elytra/:server/...
-clientRoutes.use('/servers/elytra', elytraServerRoutes);
+// Elytra daemon server routes: /api/client/servers/elytra/...
+clientApp.route('/servers/elytra', elytraServerApp)

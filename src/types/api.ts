@@ -36,17 +36,22 @@ export interface PaginatedResult<T> {
   pagination: PaginationDataSet;
 }
 
-type QueryBuilderFilterValue = string | number | boolean | null;
+// Generic fractal wrappers for admin API
+export interface FractalItem<T> {
+  object: string;
+  attributes: T;
+}
 
-export interface QueryBuilderParams<
-  FilterKeys extends string = string,
-  SortKeys extends string = string,
-> {
-  page?: number;
-  filters?: {
-    [K in FilterKeys]?: QueryBuilderFilterValue | Readonly<QueryBuilderFilterValue[]>;
-  };
-  sorts?: {
-    [K in SortKeys]?: -1 | 0 | 1 | 'asc' | 'desc' | null;
+export interface PaginatedResponse<T> {
+  object: 'list';
+  data: FractalItem<T>[];
+  meta: {
+    pagination: {
+      total: number;
+      count: number;
+      per_page: number;
+      current_page: number;
+      total_pages: number;
+    };
   };
 }

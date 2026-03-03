@@ -1,0 +1,16 @@
+{
+  "console": "Console",
+  "start": "Start",
+  "stop": "Stop",
+  "restart": "Restart",
+  "kill": "Kill",
+  "powerAction": "Power Action",
+  "serverName": "Server Name",
+  "status": "Status",
+  "online": "Online",
+  "offline": "Offline",
+  "starting": "Starting",
+  "stopping": "Stopping",
+  "suspended": "Suspended",
+  "installing": "Installing"
+}

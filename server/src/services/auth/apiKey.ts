@@ -1,12 +1,18 @@
-import crypto from 'crypto';
-import { hashPassword } from '../../utils/crypto';
+import { hashPassword } from '../../utils/crypto'
 
 export function generateApiKeyIdentifier(): string {
-  return crypto.randomBytes(8).toString('hex');
+  const bytes = new Uint8Array(8)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
 }
 
 export async function generateApiKeyToken(): Promise<{ plain: string; hashed: string }> {
-  const plain = crypto.randomBytes(32).toString('base64url');
-  const hashed = await hashPassword(plain);
-  return { plain, hashed };
+  const bytes = new Uint8Array(32)
+  crypto.getRandomValues(bytes)
+  const plain = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+  const hashed = await hashPassword(plain)
+  return { plain, hashed }
 }

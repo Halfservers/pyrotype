@@ -1,17 +1,23 @@
-import type { Request, Response, NextFunction } from 'express';
-import { ForbiddenError } from '../utils/errors';
+import type { MiddlewareHandler } from 'hono'
+import type { Env, HonoVariables } from '../types/env'
+import { ForbiddenError } from '../utils/errors'
 
-export const requireDaemonType = checkDaemonType;
+type AppEnv = { Bindings: Env; Variables: HonoVariables }
 
-export function checkDaemonType(expectedType: 'wings' | 'elytra') {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    const server = req.server as any;
-    if (!server?.node) return next();
-
-    const nodeType = (server.node.daemonType || 'wings').toLowerCase();
-    if (nodeType !== expectedType) {
-      return next(new ForbiddenError(`This endpoint is only available for ${expectedType} daemon type.`));
+export function requireDaemonType(expectedType: 'wings' | 'elytra'): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const server = c.var.server
+    if (!server?.node) {
+      await next()
+      return
     }
-    next();
-  };
+
+    const nodeType = (server.node.daemonType || 'wings').toLowerCase()
+    if (nodeType !== expectedType) {
+      throw new ForbiddenError(`This endpoint is only available for ${expectedType} daemon type.`)
+    }
+    await next()
+  }
 }
+
+export { requireDaemonType as checkDaemonType }

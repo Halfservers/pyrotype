@@ -1,0 +1,8 @@
+{
+  "renameServer": "Rename Server",
+  "reinstallServer": "Reinstall Server",
+  "serverDescription": "Server Description",
+  "dockerImage": "Docker Image",
+  "revertImage": "Revert Image",
+  "dangerZone": "Danger Zone"
+}

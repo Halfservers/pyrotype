@@ -1,0 +1,66 @@
+# ============================================================================
+# Pyrotype — Cloudflare Worker Configuration (Root)
+# ============================================================================
+#
+# This is the UNIFIED deployment config for the full-stack Pyrotype app.
+# The server-side Hono worker lives under server/src/index.ts.
+#
+# SETUP: Before deploying, replace ALL placeholder IDs below:
+#   1. D1 database_id  — run: wrangler d1 create pyrotype-db
+#   2. KV namespace id — run: wrangler kv namespace create SESSION_KV
+#
+# ============================================================================
+
+#:schema node_modules/wrangler/config-schema.json
+name = "pyrotype"
+main = "server/src/index.ts"
+compatibility_date = "2025-09-02"
+compatibility_flags = ["nodejs_compat"]
+
+# ---------------------------------------------------------------------------
+# D1 Database
+# ---------------------------------------------------------------------------
+# REPLACE database_id after running:
+#   wrangler d1 create pyrotype-db
+[[d1_databases]]
+binding = "DB"
+database_name = "pyrotype-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# ---------------------------------------------------------------------------
+# KV Namespace — session storage
+# ---------------------------------------------------------------------------
+# REPLACE id after running:
+#   wrangler kv namespace create SESSION_KV
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# ---------------------------------------------------------------------------
+# Queue — background job processing
+# ---------------------------------------------------------------------------
+[[queues.producers]]
+queue = "pyrotype-jobs"
+binding = "JOB_QUEUE"
+
+[[queues.consumers]]
+queue = "pyrotype-jobs"
+max_batch_size = 10
+max_batch_timeout = 30
+
+# ---------------------------------------------------------------------------
+# Durable Object — per-server WebSocket console proxy
+# ---------------------------------------------------------------------------
+[[durable_objects.bindings]]
+name = "SERVER_CONSOLE"
+class_name = "ServerConsole"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ServerConsole"]
+
+# ---------------------------------------------------------------------------
+# Environment variables
+# ---------------------------------------------------------------------------
+[vars]
+NODE_ENV = "production"

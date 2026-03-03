@@ -1,4 +1,5 @@
-import http, { type FractalResponseData, type FractalResponseList } from '@/lib/api/http';
+import { api } from '@/lib/http';
+import type { FractalResponseData, FractalResponseList } from '@/types/api';
 import {
   type Allocation,
   type ServerEggVariable,
@@ -90,16 +91,15 @@ export const setGlobalDaemonType = (type: string): void => {
 export default async (uuid: string): Promise<[Server, string[]]> => {
   let daemonTypeApi = 'elytra';
 
-  const firstResponse = await http.get(`/api/client/servers/${uuid}`);
-  daemonTypeApi = firstResponse.data?.meta.daemonType;
-  const daemonType: string = firstResponse.data?.meta.daemonType;
+  const firstResponse: any = await api.get(`/api/client/servers/${uuid}`);
+  daemonTypeApi = firstResponse?.meta.daemonType;
+  const daemonType: string = firstResponse?.meta.daemonType;
 
   if (daemonType) {
     globalDaemonType = daemonType;
   }
 
-  const response = await http.get(`/api/client/servers/${daemonType}/${uuid}`);
-  const payload = response.data;
+  const payload: any = await api.get(`/api/client/servers/${daemonType}/${uuid}`);
 
   const server = rawDataToServerObject(payload);
   server.daemonType = daemonTypeApi;

@@ -1,19 +1,8 @@
-import { Queue, Worker } from 'bullmq';
-import { logger } from './logger';
-
-const connection = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-};
-
-export function createQueue(name: string): Queue {
-  return new Queue(name, { connection });
+export interface JobPayload {
+  type: string
+  data: Record<string, unknown>
 }
 
-export function createWorker(name: string, processor: (job: any) => Promise<void>): Worker {
-  const worker = new Worker(name, processor, { connection });
-  worker.on('failed', (job, err) => {
-    logger.error(`Job ${job?.id} in queue ${name} failed:`, err);
-  });
-  return worker;
+export async function enqueueJob(queue: Queue, type: string, data: Record<string, unknown>): Promise<void> {
+  await queue.send({ type, data } satisfies JobPayload)
 }

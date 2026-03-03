@@ -1,7 +1,9 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../config/database';
-import { fractalItem } from '../../utils/response';
-import { NotFoundError } from '../../utils/errors';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../types/env'
+import { fractalItem } from '../../utils/response'
+import { NotFoundError } from '../../utils/errors'
+
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
 function transformServer(server: any) {
   return {
@@ -33,57 +35,54 @@ function transformServer(server: any) {
     },
     created_at: server.createdAt.toISOString(),
     updated_at: server.updatedAt.toISOString(),
-  };
+  }
 }
 
-export async function index(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const id = parseInt(req.params.id as string, 10);
-    const existing = await prisma.server.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundError('Server not found');
+export async function index(c: AppContext) {
+  const prisma = c.var.prisma
+  const id = parseInt(c.req.param('id'), 10)
+  const existing = await prisma.server.findUnique({ where: { id } })
+  if (!existing) throw new NotFoundError('Server not found')
 
-    const body = req.body;
-    const data: any = {};
+  const body = await c.req.json()
+  const data: any = {}
 
-    if (body.startup !== undefined) data.startup = body.startup;
-    if (body.egg_id !== undefined) data.eggId = body.egg_id;
-    if (body.image !== undefined) data.image = body.image;
-    if (body.skip_scripts !== undefined) data.skipScripts = body.skip_scripts;
+  if (body.startup !== undefined) data.startup = body.startup
+  if (body.egg_id !== undefined) data.eggId = body.egg_id
+  if (body.image !== undefined) data.image = body.image
+  if (body.skip_scripts !== undefined) data.skipScripts = body.skip_scripts
 
-    const server = await prisma.server.update({ where: { id }, data });
+  const server = await prisma.server.update({ where: { id }, data })
 
-    // Update environment/startup variables if provided
-    if (body.environment && typeof body.environment === 'object') {
-      for (const [key, value] of Object.entries(body.environment)) {
-        const eggVariable = await prisma.eggVariable.findFirst({
-          where: { eggId: server.eggId, envVariable: key },
-        });
-        if (eggVariable) {
-          const existing = await prisma.serverVariable.findFirst({
-            where: { serverId: server.id, variableId: eggVariable.id },
-          });
-          if (existing) {
-            await prisma.serverVariable.update({
-              where: { id: existing.id },
-              data: { variableValue: String(value) },
-            });
-          } else {
-            await prisma.serverVariable.create({
-              data: {
-                serverId: server.id,
-                variableId: eggVariable.id,
-                variableValue: String(value),
-              },
-            });
-          }
+  // Update environment/startup variables if provided
+  if (body.environment && typeof body.environment === 'object') {
+    for (const [key, value] of Object.entries(body.environment)) {
+      const eggVariable = await prisma.eggVariable.findFirst({
+        where: { eggId: server.eggId, envVariable: key },
+      })
+      if (eggVariable) {
+        const existing = await prisma.serverVariable.findFirst({
+          where: { serverId: server.id, variableId: eggVariable.id },
+        })
+        if (existing) {
+          await prisma.serverVariable.update({
+            where: { id: existing.id },
+            data: { variableValue: String(value) },
+          })
+        } else {
+          await prisma.serverVariable.create({
+            data: {
+              serverId: server.id,
+              variableId: eggVariable.id,
+              variableValue: String(value),
+            },
+          })
         }
       }
     }
-
-    // TODO: notify daemon of startup changes
-
-    res.json(fractalItem('server', transformServer(server)));
-  } catch (err) {
-    next(err);
   }
+
+  // TODO: notify daemon of startup changes
+
+  return c.json(fractalItem('server', transformServer(server)))
 }

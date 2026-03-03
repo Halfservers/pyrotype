@@ -1,7 +1,9 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../config/database';
+import type { Context } from 'hono';
+import type { Env, HonoVariables } from '../../types/env';
 import { fractalList, fractalItem } from '../../utils/response';
 import { NotFoundError } from '../../utils/errors';
+
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>;
 
 function transformNest(nest: any) {
   return {
@@ -31,35 +33,30 @@ function transformNest(nest: any) {
   };
 }
 
-export async function index(_req: Request, res: Response, next: NextFunction) {
-  try {
-    const nests = await prisma.nest.findMany({
-      include: { eggs: true },
-      orderBy: { name: 'asc' },
-    });
+export async function index(c: AppContext) {
+  const prisma = c.var.prisma;
 
-    const data = nests.map(transformNest);
-    res.json(fractalList('nest', data));
-  } catch (err) {
-    next(err);
-  }
+  const nests = await prisma.nest.findMany({
+    include: { eggs: true },
+    orderBy: { name: 'asc' },
+  });
+
+  const data = nests.map(transformNest);
+  return c.json(fractalList('nest', data));
 }
 
-export async function view(req: Request, res: Response, next: NextFunction) {
-  try {
-    const nestId = parseInt(req.params.nest as string, 10);
+export async function view(c: AppContext) {
+  const prisma = c.var.prisma;
+  const nestId = parseInt(c.req.param('nest'), 10);
 
-    const nest = await prisma.nest.findUnique({
-      where: { id: nestId },
-      include: { eggs: true },
-    });
+  const nest = await prisma.nest.findUnique({
+    where: { id: nestId },
+    include: { eggs: true },
+  });
 
-    if (!nest) {
-      throw new NotFoundError('Nest not found');
-    }
-
-    res.json(fractalItem('nest', transformNest(nest)));
-  } catch (err) {
-    next(err);
+  if (!nest) {
+    throw new NotFoundError('Nest not found');
   }
+
+  return c.json(fractalItem('nest', transformNest(nest)));
 }

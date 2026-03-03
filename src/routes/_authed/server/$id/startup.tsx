@@ -1,14 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import StartupContainer from '@/components/server/startup/startup-container'
 
 export const Route = createFileRoute('/_authed/server/$id/startup' as any)({
-  component: StartupPage,
+  component: StartupContainer,
 })
-
-function StartupPage() {
-  return (
-    <div className="p-6">
-      <h2 className="text-2xl font-bold text-white mb-4">Startup</h2>
-      <p className="text-zinc-400">Coming soon</p>
-    </div>
-  )
-}

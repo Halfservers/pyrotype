@@ -1,35 +1,41 @@
-import type { Request, Response, NextFunction } from 'express';
-import { ZodSchema, ZodError } from 'zod';
-import { ValidationError } from '../utils/errors';
+import type { MiddlewareHandler } from 'hono'
+import type { ZodSchema } from 'zod'
+import type { Env, HonoVariables } from '../types/env'
+import { ValidationError } from '../utils/errors'
+
+type AppEnv = { Bindings: Env; Variables: HonoVariables }
 
 interface ValidateOptions {
-  body?: ZodSchema;
-  query?: ZodSchema;
-  params?: ZodSchema;
+  body?: ZodSchema
+  query?: ZodSchema
+  params?: ZodSchema
 }
 
-export function validate(schemas: ValidateOptions) {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    try {
-      if (schemas.body) {
-        req.body = schemas.body.parse(req.body);
+/**
+ * Returns a single Hono middleware that validates body, query, and/or params
+ * using Zod schemas. Throws ValidationError on failure.
+ */
+export function validate(schemas: ValidateOptions): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    if (schemas.params) {
+      const result = schemas.params.safeParse(c.req.param())
+      if (!result.success) {
+        throw new ValidationError('Validation failed', result.error.issues)
       }
-      if (schemas.query) {
-        const parsed = schemas.query.parse(req.query) as Record<string, string>;
-        // Express 5 makes req.query a read-only getter; replace via defineProperty
-        Object.defineProperty(req, 'query', { value: parsed, writable: true, configurable: true });
-      }
-      if (schemas.params) {
-        const parsed = schemas.params.parse(req.params) as any;
-        Object.defineProperty(req, 'params', { value: parsed, writable: true, configurable: true });
-      }
-      next();
-    } catch (error) {
-      if (error instanceof ZodError) {
-        next(new ValidationError('Validation failed', error.issues));
-        return;
-      }
-      next(error);
     }
-  };
+    if (schemas.query) {
+      const result = schemas.query.safeParse(c.req.query())
+      if (!result.success) {
+        throw new ValidationError('Validation failed', result.error.issues)
+      }
+    }
+    if (schemas.body) {
+      const body = await c.req.json()
+      const result = schemas.body.safeParse(body)
+      if (!result.success) {
+        throw new ValidationError('Validation failed', result.error.issues)
+      }
+    }
+    await next()
+  }
 }

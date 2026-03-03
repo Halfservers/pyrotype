@@ -4,6 +4,7 @@ import { LayoutList, LayoutGrid, Cpu, MemoryStick, HardDrive, Server } from 'luc
 import { useServerListQuery } from '@/lib/queries'
 import { useAppStore } from '@/store'
 import { usePersistedState } from '@/lib/hooks/usePersistedState'
+import type { Server as ServerData } from '@/lib/api/server/get-server'
 
 export const Route = createFileRoute('/_authed/' as any)({
   component: DashboardPage,
@@ -167,8 +168,8 @@ function StatusDot({ status }: { status?: string | null }) {
   )
 }
 
-function ServerCard({ server, layout }: { server: any; layout: 'list' | 'grid' }) {
-  const defaultAllocation = server.allocations?.find((a: any) => a.isDefault)
+function ServerCard({ server, layout }: { server: ServerData; layout: 'list' | 'grid' }) {
+  const defaultAllocation = server.allocations?.find((a) => a.isDefault)
   const address = defaultAllocation
     ? `${defaultAllocation.alias || defaultAllocation.ip}:${defaultAllocation.port}`
     : null

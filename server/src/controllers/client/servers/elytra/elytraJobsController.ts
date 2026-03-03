@@ -1,82 +1,68 @@
-import type { Request, Response, NextFunction } from 'express';
-import { NotFoundError } from '../../../../utils/errors';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../../../types/env'
+import { NotFoundError } from '../../../../utils/errors'
 
-export async function listJobs(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const jobType = req.query.type as string | undefined;
-    const jobStatus = req.query.status as string | undefined;
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
-    // In production, this queries the ElytraJobService which tracks
-    // async jobs submitted to the Elytra daemon.
-    // Jobs are stored in the database and their status is updated
-    // by the daemon through the remote API callback endpoints.
+export async function listJobs(c: AppContext) {
+  const server = c.var.server!
+  const jobType = c.req.query('type')
+  const jobStatus = c.req.query('status')
 
-    res.json({
-      object: 'list',
-      data: [],
-    });
-  } catch (err) {
-    next(err);
-  }
+  // In production, this queries the ElytraJobService which tracks
+  // async jobs submitted to the Elytra daemon.
+  // Jobs are stored in the database and their status is updated
+  // by the daemon through the remote API callback endpoints.
+
+  return c.json({
+    object: 'list',
+    data: [],
+  })
 }
 
-export async function createJob(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const { job_type, job_data } = req.body;
+export async function createJob(c: AppContext) {
+  const server = c.var.server!
+  const { job_type, job_data } = await c.req.json()
 
-    if (!job_type || typeof job_type !== 'string') {
-      res.status(422).json({ error: 'A job type must be provided.' });
-      return;
-    }
-
-    // In production, this submits the job through ElytraJobService
-    // which validates permissions, creates a job record, and sends
-    // the request to the Elytra daemon.
-
-    const jobId = `job_${Date.now()}`;
-
-    // TODO: Activity log: job:create
-
-    res.json({
-      job_id: jobId,
-      status: 'queued',
-      type: job_type,
-    });
-  } catch (err) {
-    next(err);
+  if (!job_type || typeof job_type !== 'string') {
+    return c.json({ error: 'A job type must be provided.' }, 422)
   }
+
+  // In production, this submits the job through ElytraJobService
+  // which validates permissions, creates a job record, and sends
+  // the request to the Elytra daemon.
+
+  const jobId = `job_${Date.now()}`
+
+  // TODO: Activity log: job:create
+
+  return c.json({
+    job_id: jobId,
+    status: 'queued',
+    type: job_type,
+  })
 }
 
-export async function showJob(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const { jobId } = req.params;
+export async function showJob(c: AppContext) {
+  const server = c.var.server!
+  const jobId = c.req.param('jobId')
 
-    // In production, query ElytraJobService for job status.
-    // For now, return not found as we don't have persistent job storage yet.
-    throw new NotFoundError('Job not found');
-  } catch (err) {
-    next(err);
-  }
+  // In production, query ElytraJobService for job status.
+  // For now, return not found as we don't have persistent job storage yet.
+  throw new NotFoundError('Job not found')
 }
 
-export async function cancelJob(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const { jobId } = req.params;
+export async function cancelJob(c: AppContext) {
+  const server = c.var.server!
+  const jobId = c.req.param('jobId')
 
-    // In production, cancel through ElytraJobService which sends
-    // a cancellation request to the Elytra daemon.
+  // In production, cancel through ElytraJobService which sends
+  // a cancellation request to the Elytra daemon.
 
-    // TODO: Activity log: job:cancel
+  // TODO: Activity log: job:cancel
 
-    res.json({
-      job_id: jobId,
-      status: 'cancelled',
-    });
-  } catch (err) {
-    next(err);
-  }
+  return c.json({
+    job_id: jobId,
+    status: 'cancelled',
+  })
 }

@@ -1,14 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import FileManagerContainer from '@/components/server/files/file-manager-container'
 
 export const Route = createFileRoute('/_authed/server/$id/files' as any)({
-  component: FileManagerPage,
+  component: FileManagerContainer,
 })
-
-function FileManagerPage() {
-  return (
-    <div className="p-6">
-      <h2 className="text-2xl font-bold text-white mb-4">File Manager</h2>
-      <p className="text-zinc-400">Coming soon</p>
-    </div>
-  )
-}

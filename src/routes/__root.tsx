@@ -1,6 +1,7 @@
 import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
 import { Toaster } from 'sonner'
 
+import '@/i18n'
 import appCss from '../styles.css?url'
 
 export const Route = createRootRoute({
