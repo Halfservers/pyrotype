@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
+import { Flame, ArrowRight } from 'lucide-react'
 
 import { loginSchema, type LoginData } from '@/lib/validators/auth'
 import login from '@/lib/api/auth/login'
@@ -65,81 +66,110 @@ function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
-      <div className="w-full max-w-lg px-8">
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
-            {error}
+    <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a] relative overflow-hidden">
+      {/* Background gradient effects */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-[40%] -left-[20%] w-[60%] h-[60%] rounded-full bg-brand/[0.04] blur-[120px]" />
+        <div className="absolute -bottom-[40%] -right-[20%] w-[60%] h-[60%] rounded-full bg-purple-500/[0.03] blur-[120px]" />
+      </div>
+
+      <div className="relative w-full max-w-md px-6">
+        {/* Logo */}
+        <div className="flex items-center gap-3 mb-10">
+          <div className="w-10 h-10 rounded-xl bg-brand/20 flex items-center justify-center">
+            <Flame className="w-5 h-5 text-brand" />
           </div>
-        )}
+          <span className="text-2xl font-bold text-white tracking-tight">Pyrotype</span>
+        </div>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="w-full flex flex-col">
-            <div className="flex h-12 mb-4 items-center w-full">
-              <span className="text-2xl font-bold text-white tracking-tight">Pyrotype</span>
+        {/* Card */}
+        <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 backdrop-blur-sm">
+          <h2 className="text-xl font-bold mb-1 text-white">Welcome back</h2>
+          <p className="text-sm text-zinc-500 mb-6">Sign in to your account to continue.</p>
+
+          {error && (
+            <div className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
+              {error}
             </div>
+          )}
 
-            <div aria-hidden className="my-8 bg-[#ffffff33] min-h-[1px]" />
-
-            <h2 className="text-xl font-extrabold mb-2 text-white">Login</h2>
-
-            <FormField
-              control={form.control}
-              name="user"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-zinc-300">Username or Email</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="text"
-                      disabled={form.formState.isSubmitting}
-                      className="bg-[#ffffff09] border-[#ffffff12] text-white"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="relative mt-6">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
               <FormField
                 control={form.control}
-                name="password"
+                name="user"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-zinc-300">Password</FormLabel>
+                    <FormLabel className="text-zinc-400 text-xs font-medium uppercase tracking-wider">
+                      Username or Email
+                    </FormLabel>
                     <FormControl>
                       <Input
                         {...field}
-                        type="password"
+                        type="text"
                         disabled={form.formState.isSubmitting}
-                        className="bg-[#ffffff09] border-[#ffffff12] text-white"
+                        className="bg-white/[0.04] border-white/[0.08] text-white h-11 rounded-xl transition-all"
+                        placeholder="you@example.com"
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Link
-                to="/auth/forgot-password"
-                className="text-xs text-zinc-500 tracking-wide no-underline hover:text-zinc-400 absolute top-1 right-0"
-              >
-                Forgot Password?
-              </Link>
-            </div>
 
-            <div className="mt-6">
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between">
+                      <FormLabel className="text-zinc-400 text-xs font-medium uppercase tracking-wider">
+                        Password
+                      </FormLabel>
+                      <Link
+                        to="/auth/forgot-password"
+                        className="text-xs text-zinc-500 hover:text-brand transition-colors"
+                      >
+                        Forgot password?
+                      </Link>
+                    </div>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type="password"
+                        disabled={form.formState.isSubmitting}
+                        className="bg-white/[0.04] border-white/[0.08] text-white h-11 rounded-xl transition-all"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <Button
-                className="relative mt-4 w-full rounded-full bg-brand border-0 ring-0 outline-hidden capitalize font-bold text-sm py-2"
                 type="submit"
                 disabled={form.formState.isSubmitting}
+                className="w-full h-11 rounded-xl bg-brand hover:bg-brand/90 text-white font-semibold text-sm transition-all group"
               >
-                {form.formState.isSubmitting ? 'Logging in...' : 'Login'}
+                {form.formState.isSubmitting ? (
+                  <span className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Signing in...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    Sign in
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                  </span>
+                )}
               </Button>
-            </div>
-          </form>
-        </Form>
+            </form>
+          </Form>
+        </div>
+
+        <p className="text-center text-xs text-zinc-600 mt-6">
+          Powered by Pyrotype
+        </p>
       </div>
     </div>
   )

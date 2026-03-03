@@ -10,23 +10,24 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthedRouteImport } from './routes/_authed'
+import { Route as AdminRouteImport } from './routes/_admin'
 import { Route as AuthedIndexRouteImport } from './routes/_authed/index'
 import { Route as AuthLoginRouteImport } from './routes/auth/login'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-password'
-import { Route as AuthedAdminRouteImport } from './routes/_authed/admin'
 import { Route as AuthedAccountRouteImport } from './routes/_authed/account'
-import { Route as AuthedAdminIndexRouteImport } from './routes/_authed/admin/index'
+import { Route as AdminAdminRouteImport } from './routes/_admin/admin'
 import { Route as AuthedAccountIndexRouteImport } from './routes/_authed/account/index'
+import { Route as AdminAdminIndexRouteImport } from './routes/_admin/admin/index'
 import { Route as AuthResetPasswordTokenRouteImport } from './routes/auth/reset-password.$token'
 import { Route as AuthLoginCheckpointRouteImport } from './routes/auth/login.checkpoint'
 import { Route as AuthedServerIdRouteImport } from './routes/_authed/server/$id'
-import { Route as AuthedAdminUsersRouteImport } from './routes/_authed/admin/users'
-import { Route as AuthedAdminServersRouteImport } from './routes/_authed/admin/servers'
-import { Route as AuthedAdminNodesRouteImport } from './routes/_authed/admin/nodes'
-import { Route as AuthedAdminLocationsRouteImport } from './routes/_authed/admin/locations'
 import { Route as AuthedAccountSshRouteImport } from './routes/_authed/account/ssh'
 import { Route as AuthedAccountApiRouteImport } from './routes/_authed/account/api'
 import { Route as AuthedAccountActivityRouteImport } from './routes/_authed/account/activity'
+import { Route as AdminAdminUsersRouteImport } from './routes/_admin/admin/users'
+import { Route as AdminAdminServersRouteImport } from './routes/_admin/admin/servers'
+import { Route as AdminAdminNodesRouteImport } from './routes/_admin/admin/nodes'
+import { Route as AdminAdminLocationsRouteImport } from './routes/_admin/admin/locations'
 import { Route as AuthedServerIdIndexRouteImport } from './routes/_authed/server/$id/index'
 import { Route as AuthedServerIdUsersRouteImport } from './routes/_authed/server/$id/users'
 import { Route as AuthedServerIdStartupRouteImport } from './routes/_authed/server/$id/startup'
@@ -44,6 +45,10 @@ const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/_admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthedIndexRoute = AuthedIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -59,25 +64,25 @@ const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
   path: '/auth/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthedAdminRoute = AuthedAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => AuthedRoute,
-} as any)
 const AuthedAccountRoute = AuthedAccountRouteImport.update({
   id: '/account',
   path: '/account',
   getParentRoute: () => AuthedRoute,
 } as any)
-const AuthedAdminIndexRoute = AuthedAdminIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AuthedAdminRoute,
+const AdminAdminRoute = AdminAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AdminRoute,
 } as any)
 const AuthedAccountIndexRoute = AuthedAccountIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthedAccountRoute,
+} as any)
+const AdminAdminIndexRoute = AdminAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminAdminRoute,
 } as any)
 const AuthResetPasswordTokenRoute = AuthResetPasswordTokenRouteImport.update({
   id: '/auth/reset-password/$token',
@@ -94,26 +99,6 @@ const AuthedServerIdRoute = AuthedServerIdRouteImport.update({
   path: '/server/$id',
   getParentRoute: () => AuthedRoute,
 } as any)
-const AuthedAdminUsersRoute = AuthedAdminUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => AuthedAdminRoute,
-} as any)
-const AuthedAdminServersRoute = AuthedAdminServersRouteImport.update({
-  id: '/servers',
-  path: '/servers',
-  getParentRoute: () => AuthedAdminRoute,
-} as any)
-const AuthedAdminNodesRoute = AuthedAdminNodesRouteImport.update({
-  id: '/nodes',
-  path: '/nodes',
-  getParentRoute: () => AuthedAdminRoute,
-} as any)
-const AuthedAdminLocationsRoute = AuthedAdminLocationsRouteImport.update({
-  id: '/locations',
-  path: '/locations',
-  getParentRoute: () => AuthedAdminRoute,
-} as any)
 const AuthedAccountSshRoute = AuthedAccountSshRouteImport.update({
   id: '/ssh',
   path: '/ssh',
@@ -128,6 +113,26 @@ const AuthedAccountActivityRoute = AuthedAccountActivityRouteImport.update({
   id: '/activity',
   path: '/activity',
   getParentRoute: () => AuthedAccountRoute,
+} as any)
+const AdminAdminUsersRoute = AdminAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
+const AdminAdminServersRoute = AdminAdminServersRouteImport.update({
+  id: '/servers',
+  path: '/servers',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
+const AdminAdminNodesRoute = AdminAdminNodesRouteImport.update({
+  id: '/nodes',
+  path: '/nodes',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
+const AdminAdminLocationsRoute = AdminAdminLocationsRouteImport.update({
+  id: '/locations',
+  path: '/locations',
+  getParentRoute: () => AdminAdminRoute,
 } as any)
 const AuthedServerIdIndexRoute = AuthedServerIdIndexRouteImport.update({
   id: '/',
@@ -192,22 +197,22 @@ const AuthedServerIdActivityRoute = AuthedServerIdActivityRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
+  '/admin': typeof AdminAdminRouteWithChildren
   '/account': typeof AuthedAccountRouteWithChildren
-  '/admin': typeof AuthedAdminRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRouteWithChildren
+  '/admin/locations': typeof AdminAdminLocationsRoute
+  '/admin/nodes': typeof AdminAdminNodesRoute
+  '/admin/servers': typeof AdminAdminServersRoute
+  '/admin/users': typeof AdminAdminUsersRoute
   '/account/activity': typeof AuthedAccountActivityRoute
   '/account/api': typeof AuthedAccountApiRoute
   '/account/ssh': typeof AuthedAccountSshRoute
-  '/admin/locations': typeof AuthedAdminLocationsRoute
-  '/admin/nodes': typeof AuthedAdminNodesRoute
-  '/admin/servers': typeof AuthedAdminServersRoute
-  '/admin/users': typeof AuthedAdminUsersRoute
   '/server/$id': typeof AuthedServerIdRouteWithChildren
   '/auth/login/checkpoint': typeof AuthLoginCheckpointRoute
   '/auth/reset-password/$token': typeof AuthResetPasswordTokenRoute
+  '/admin/': typeof AdminAdminIndexRoute
   '/account/': typeof AuthedAccountIndexRoute
-  '/admin/': typeof AuthedAdminIndexRoute
   '/server/$id/activity': typeof AuthedServerIdActivityRoute
   '/server/$id/backups': typeof AuthedServerIdBackupsRoute
   '/server/$id/databases': typeof AuthedServerIdDatabasesRoute
@@ -222,20 +227,20 @@ export interface FileRoutesByFullPath {
   '/server/$id/': typeof AuthedServerIdIndexRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof AuthedIndexRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRouteWithChildren
-  '/': typeof AuthedIndexRoute
+  '/admin/locations': typeof AdminAdminLocationsRoute
+  '/admin/nodes': typeof AdminAdminNodesRoute
+  '/admin/servers': typeof AdminAdminServersRoute
+  '/admin/users': typeof AdminAdminUsersRoute
   '/account/activity': typeof AuthedAccountActivityRoute
   '/account/api': typeof AuthedAccountApiRoute
   '/account/ssh': typeof AuthedAccountSshRoute
-  '/admin/locations': typeof AuthedAdminLocationsRoute
-  '/admin/nodes': typeof AuthedAdminNodesRoute
-  '/admin/servers': typeof AuthedAdminServersRoute
-  '/admin/users': typeof AuthedAdminUsersRoute
   '/auth/login/checkpoint': typeof AuthLoginCheckpointRoute
   '/auth/reset-password/$token': typeof AuthResetPasswordTokenRoute
+  '/admin': typeof AdminAdminIndexRoute
   '/account': typeof AuthedAccountIndexRoute
-  '/admin': typeof AuthedAdminIndexRoute
   '/server/$id/activity': typeof AuthedServerIdActivityRoute
   '/server/$id/backups': typeof AuthedServerIdBackupsRoute
   '/server/$id/databases': typeof AuthedServerIdDatabasesRoute
@@ -251,24 +256,25 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/_admin': typeof AdminRouteWithChildren
   '/_authed': typeof AuthedRouteWithChildren
+  '/_admin/admin': typeof AdminAdminRouteWithChildren
   '/_authed/account': typeof AuthedAccountRouteWithChildren
-  '/_authed/admin': typeof AuthedAdminRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRouteWithChildren
   '/_authed/': typeof AuthedIndexRoute
+  '/_admin/admin/locations': typeof AdminAdminLocationsRoute
+  '/_admin/admin/nodes': typeof AdminAdminNodesRoute
+  '/_admin/admin/servers': typeof AdminAdminServersRoute
+  '/_admin/admin/users': typeof AdminAdminUsersRoute
   '/_authed/account/activity': typeof AuthedAccountActivityRoute
   '/_authed/account/api': typeof AuthedAccountApiRoute
   '/_authed/account/ssh': typeof AuthedAccountSshRoute
-  '/_authed/admin/locations': typeof AuthedAdminLocationsRoute
-  '/_authed/admin/nodes': typeof AuthedAdminNodesRoute
-  '/_authed/admin/servers': typeof AuthedAdminServersRoute
-  '/_authed/admin/users': typeof AuthedAdminUsersRoute
   '/_authed/server/$id': typeof AuthedServerIdRouteWithChildren
   '/auth/login/checkpoint': typeof AuthLoginCheckpointRoute
   '/auth/reset-password/$token': typeof AuthResetPasswordTokenRoute
+  '/_admin/admin/': typeof AdminAdminIndexRoute
   '/_authed/account/': typeof AuthedAccountIndexRoute
-  '/_authed/admin/': typeof AuthedAdminIndexRoute
   '/_authed/server/$id/activity': typeof AuthedServerIdActivityRoute
   '/_authed/server/$id/backups': typeof AuthedServerIdBackupsRoute
   '/_authed/server/$id/databases': typeof AuthedServerIdDatabasesRoute
@@ -286,22 +292,22 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/account'
     | '/admin'
+    | '/account'
     | '/auth/forgot-password'
     | '/auth/login'
-    | '/account/activity'
-    | '/account/api'
-    | '/account/ssh'
     | '/admin/locations'
     | '/admin/nodes'
     | '/admin/servers'
     | '/admin/users'
+    | '/account/activity'
+    | '/account/api'
+    | '/account/ssh'
     | '/server/$id'
     | '/auth/login/checkpoint'
     | '/auth/reset-password/$token'
-    | '/account/'
     | '/admin/'
+    | '/account/'
     | '/server/$id/activity'
     | '/server/$id/backups'
     | '/server/$id/databases'
@@ -316,20 +322,20 @@ export interface FileRouteTypes {
     | '/server/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/'
     | '/auth/forgot-password'
     | '/auth/login'
-    | '/'
-    | '/account/activity'
-    | '/account/api'
-    | '/account/ssh'
     | '/admin/locations'
     | '/admin/nodes'
     | '/admin/servers'
     | '/admin/users'
+    | '/account/activity'
+    | '/account/api'
+    | '/account/ssh'
     | '/auth/login/checkpoint'
     | '/auth/reset-password/$token'
-    | '/account'
     | '/admin'
+    | '/account'
     | '/server/$id/activity'
     | '/server/$id/backups'
     | '/server/$id/databases'
@@ -344,24 +350,25 @@ export interface FileRouteTypes {
     | '/server/$id'
   id:
     | '__root__'
+    | '/_admin'
     | '/_authed'
+    | '/_admin/admin'
     | '/_authed/account'
-    | '/_authed/admin'
     | '/auth/forgot-password'
     | '/auth/login'
     | '/_authed/'
+    | '/_admin/admin/locations'
+    | '/_admin/admin/nodes'
+    | '/_admin/admin/servers'
+    | '/_admin/admin/users'
     | '/_authed/account/activity'
     | '/_authed/account/api'
     | '/_authed/account/ssh'
-    | '/_authed/admin/locations'
-    | '/_authed/admin/nodes'
-    | '/_authed/admin/servers'
-    | '/_authed/admin/users'
     | '/_authed/server/$id'
     | '/auth/login/checkpoint'
     | '/auth/reset-password/$token'
+    | '/_admin/admin/'
     | '/_authed/account/'
-    | '/_authed/admin/'
     | '/_authed/server/$id/activity'
     | '/_authed/server/$id/backups'
     | '/_authed/server/$id/databases'
@@ -377,6 +384,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  AdminRoute: typeof AdminRouteWithChildren
   AuthedRoute: typeof AuthedRouteWithChildren
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthLoginRoute: typeof AuthLoginRouteWithChildren
@@ -390,6 +398,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_admin': {
+      id: '/_admin'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authed/': {
@@ -413,13 +428,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authed/admin': {
-      id: '/_authed/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AuthedAdminRouteImport
-      parentRoute: typeof AuthedRoute
-    }
     '/_authed/account': {
       id: '/_authed/account'
       path: '/account'
@@ -427,12 +435,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedAccountRouteImport
       parentRoute: typeof AuthedRoute
     }
-    '/_authed/admin/': {
-      id: '/_authed/admin/'
-      path: '/'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AuthedAdminIndexRouteImport
-      parentRoute: typeof AuthedAdminRoute
+    '/_admin/admin': {
+      id: '/_admin/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminAdminRouteImport
+      parentRoute: typeof AdminRoute
     }
     '/_authed/account/': {
       id: '/_authed/account/'
@@ -440,6 +448,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/account/'
       preLoaderRoute: typeof AuthedAccountIndexRouteImport
       parentRoute: typeof AuthedAccountRoute
+    }
+    '/_admin/admin/': {
+      id: '/_admin/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminAdminIndexRouteImport
+      parentRoute: typeof AdminAdminRoute
     }
     '/auth/reset-password/$token': {
       id: '/auth/reset-password/$token'
@@ -462,34 +477,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedServerIdRouteImport
       parentRoute: typeof AuthedRoute
     }
-    '/_authed/admin/users': {
-      id: '/_authed/admin/users'
-      path: '/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AuthedAdminUsersRouteImport
-      parentRoute: typeof AuthedAdminRoute
-    }
-    '/_authed/admin/servers': {
-      id: '/_authed/admin/servers'
-      path: '/servers'
-      fullPath: '/admin/servers'
-      preLoaderRoute: typeof AuthedAdminServersRouteImport
-      parentRoute: typeof AuthedAdminRoute
-    }
-    '/_authed/admin/nodes': {
-      id: '/_authed/admin/nodes'
-      path: '/nodes'
-      fullPath: '/admin/nodes'
-      preLoaderRoute: typeof AuthedAdminNodesRouteImport
-      parentRoute: typeof AuthedAdminRoute
-    }
-    '/_authed/admin/locations': {
-      id: '/_authed/admin/locations'
-      path: '/locations'
-      fullPath: '/admin/locations'
-      preLoaderRoute: typeof AuthedAdminLocationsRouteImport
-      parentRoute: typeof AuthedAdminRoute
-    }
     '/_authed/account/ssh': {
       id: '/_authed/account/ssh'
       path: '/ssh'
@@ -510,6 +497,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/account/activity'
       preLoaderRoute: typeof AuthedAccountActivityRouteImport
       parentRoute: typeof AuthedAccountRoute
+    }
+    '/_admin/admin/users': {
+      id: '/_admin/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminAdminUsersRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
+    '/_admin/admin/servers': {
+      id: '/_admin/admin/servers'
+      path: '/servers'
+      fullPath: '/admin/servers'
+      preLoaderRoute: typeof AdminAdminServersRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
+    '/_admin/admin/nodes': {
+      id: '/_admin/admin/nodes'
+      path: '/nodes'
+      fullPath: '/admin/nodes'
+      preLoaderRoute: typeof AdminAdminNodesRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
+    '/_admin/admin/locations': {
+      id: '/_admin/admin/locations'
+      path: '/locations'
+      fullPath: '/admin/locations'
+      preLoaderRoute: typeof AdminAdminLocationsRouteImport
+      parentRoute: typeof AdminAdminRoute
     }
     '/_authed/server/$id/': {
       id: '/_authed/server/$id/'
@@ -598,6 +613,36 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AdminAdminRouteChildren {
+  AdminAdminLocationsRoute: typeof AdminAdminLocationsRoute
+  AdminAdminNodesRoute: typeof AdminAdminNodesRoute
+  AdminAdminServersRoute: typeof AdminAdminServersRoute
+  AdminAdminUsersRoute: typeof AdminAdminUsersRoute
+  AdminAdminIndexRoute: typeof AdminAdminIndexRoute
+}
+
+const AdminAdminRouteChildren: AdminAdminRouteChildren = {
+  AdminAdminLocationsRoute: AdminAdminLocationsRoute,
+  AdminAdminNodesRoute: AdminAdminNodesRoute,
+  AdminAdminServersRoute: AdminAdminServersRoute,
+  AdminAdminUsersRoute: AdminAdminUsersRoute,
+  AdminAdminIndexRoute: AdminAdminIndexRoute,
+}
+
+const AdminAdminRouteWithChildren = AdminAdminRoute._addFileChildren(
+  AdminAdminRouteChildren,
+)
+
+interface AdminRouteChildren {
+  AdminAdminRoute: typeof AdminAdminRouteWithChildren
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminAdminRoute: AdminAdminRouteWithChildren,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
+
 interface AuthedAccountRouteChildren {
   AuthedAccountActivityRoute: typeof AuthedAccountActivityRoute
   AuthedAccountApiRoute: typeof AuthedAccountApiRoute
@@ -614,26 +659,6 @@ const AuthedAccountRouteChildren: AuthedAccountRouteChildren = {
 
 const AuthedAccountRouteWithChildren = AuthedAccountRoute._addFileChildren(
   AuthedAccountRouteChildren,
-)
-
-interface AuthedAdminRouteChildren {
-  AuthedAdminLocationsRoute: typeof AuthedAdminLocationsRoute
-  AuthedAdminNodesRoute: typeof AuthedAdminNodesRoute
-  AuthedAdminServersRoute: typeof AuthedAdminServersRoute
-  AuthedAdminUsersRoute: typeof AuthedAdminUsersRoute
-  AuthedAdminIndexRoute: typeof AuthedAdminIndexRoute
-}
-
-const AuthedAdminRouteChildren: AuthedAdminRouteChildren = {
-  AuthedAdminLocationsRoute: AuthedAdminLocationsRoute,
-  AuthedAdminNodesRoute: AuthedAdminNodesRoute,
-  AuthedAdminServersRoute: AuthedAdminServersRoute,
-  AuthedAdminUsersRoute: AuthedAdminUsersRoute,
-  AuthedAdminIndexRoute: AuthedAdminIndexRoute,
-}
-
-const AuthedAdminRouteWithChildren = AuthedAdminRoute._addFileChildren(
-  AuthedAdminRouteChildren,
 )
 
 interface AuthedServerIdRouteChildren {
@@ -672,14 +697,12 @@ const AuthedServerIdRouteWithChildren = AuthedServerIdRoute._addFileChildren(
 
 interface AuthedRouteChildren {
   AuthedAccountRoute: typeof AuthedAccountRouteWithChildren
-  AuthedAdminRoute: typeof AuthedAdminRouteWithChildren
   AuthedIndexRoute: typeof AuthedIndexRoute
   AuthedServerIdRoute: typeof AuthedServerIdRouteWithChildren
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedAccountRoute: AuthedAccountRouteWithChildren,
-  AuthedAdminRoute: AuthedAdminRouteWithChildren,
   AuthedIndexRoute: AuthedIndexRoute,
   AuthedServerIdRoute: AuthedServerIdRouteWithChildren,
 }
@@ -700,6 +723,7 @@ const AuthLoginRouteWithChildren = AuthLoginRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  AdminRoute: AdminRouteWithChildren,
   AuthedRoute: AuthedRouteWithChildren,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthLoginRoute: AuthLoginRouteWithChildren,

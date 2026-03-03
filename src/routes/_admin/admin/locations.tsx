@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-export const Route = createFileRoute('/_authed/admin/locations' as any)({
+export const Route = createFileRoute('/_admin/admin/locations' as any)({
   component: AdminLocationsPage,
 })
 
@@ -107,7 +107,7 @@ function AdminLocationsPage() {
   const formatDate = (iso: string) => new Date(iso).toLocaleDateString()
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Locations</h1>
         <Button onClick={openCreate}>Create Location</Button>

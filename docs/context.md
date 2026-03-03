@@ -15,6 +15,23 @@ Full context dump for session handoff. This file contains everything needed to c
 The original source lives in `C:/Users/night/Pyro/pyrodactyl/` (read-only reference).
 The new codebase lives in `C:/Users/night/Pyro/pyrotype/`.
 
+### Pyrotype vs Pyrodactyl at a Glance
+
+| Dimension | Pyrodactyl | Pyrotype |
+|---|---|---|
+| Architecture | Laravel monolith + React SPA | Standalone React SSR + Express API |
+| React LOC | 28,734 (340 files) | 21,479 (206 files) — **-25%** |
+| State | Easy-Peasy (Redux wrapper) | Zustand 5.0 (lightweight) |
+| Server State | SWR 2.3.4 | React Query 5.90 |
+| Forms | Formik + Yup | React Hook Form + Zod |
+| Routing | React Router 7.7 (component-based) | TanStack Router 1.132 (file-based, type-safe) |
+| UI | Custom primitives + Radix + styled-components | shadcn/ui (28 components) + Radix + pure Tailwind |
+| CSS | Tailwind + styled-components hybrid | Tailwind 4.1 only + CVA |
+| Navigation | Top navbar | shadcn Sidebar (collapsible, icon mode, mobile sheet) |
+| Admin | Inside `_authed` layout (tab bar) | Separate `_admin` layout (own sidebar, rose-themed) |
+| TypeScript | Partial strict (`noImplicitAny: false`) | Full strict mode |
+| Dependencies | 107 packages | 82 packages — **-23%** |
+
 ---
 
 ## Running the Project
@@ -206,47 +223,76 @@ The `requireAdminAccess` middleware in `server/src/middleware/apiKeyAuth.ts` all
 ## Frontend Route Map
 
 ```
-/                                    — Root (__root.tsx — reads window.PterodactylUser)
+/                                    — Root (__root.tsx — Toaster + Outlet)
 ├── /auth/login                      — Login page
 ├── /auth/login/checkpoint           — 2FA checkpoint
 ├── /auth/forgot-password            — Forgot password
 ├── /auth/reset-password/:token      — Reset password
-└── /_authed                         — Auth guard layout (NavBar + Outlet)
-    ├── /                            — Dashboard (server list)
-    ├── /account                     — Account layout with sidebar
-    │   ├── /account/                — Account overview
-    │   ├── /account/api             — API credentials
-    │   ├── /account/ssh             — SSH keys
-    │   └── /account/activity        — Activity log
-    ├── /admin                       — Admin layout (tab nav, rootAdmin only)
-    │   ├── /admin/                  — Admin dashboard (live counts)
-    │   ├── /admin/users             — Users CRUD (table + create/edit/delete)
-    │   ├── /admin/servers           — Servers management (suspend/reinstall/delete)
-    │   ├── /admin/nodes             — Nodes CRUD (with location dropdown)
-    │   └── /admin/locations         — Locations CRUD
-    └── /server/:id                  — Server layout (sidebar, WebSocket, ServerStoreProvider)
-        ├── /server/:id/             — Console (xterm.js)
-        ├── /server/:id/files        — File manager
-        ├── /server/:id/databases    — Databases
-        ├── /server/:id/backups      — Backups
-        ├── /server/:id/network      — Network/allocations
-        ├── /server/:id/users        — Subusers
-        ├── /server/:id/schedules    — Schedules
-        ├── /server/:id/startup      — Startup variables
-        ├── /server/:id/settings     — Server settings
-        ├── /server/:id/activity     — Activity log
-        ├── /server/:id/shell        — Shell
-        └── /server/:id/mods         — Mods (Modrinth)
+├── /_authed                         — Auth guard + shadcn Sidebar layout
+│   ├── /                            — Dashboard (server list)
+│   ├── /account                     — Account wrapper (just Outlet)
+│   │   ├── /account/                — Account overview (profile)
+│   │   ├── /account/api             — API credentials
+│   │   ├── /account/ssh             — SSH keys
+│   │   └── /account/activity        — Activity log
+│   └── /server/:id                  — Server layout (own SidebarProvider + sidebar)
+│       ├── /server/:id/             — Console (xterm.js)
+│       ├── /server/:id/files        — File manager
+│       ├── /server/:id/databases    — Databases
+│       ├── /server/:id/backups      — Backups
+│       ├── /server/:id/network      — Network/allocations
+│       ├── /server/:id/users        — Subusers
+│       ├── /server/:id/schedules    — Schedules
+│       ├── /server/:id/startup      — Startup variables
+│       ├── /server/:id/settings     — Server settings
+│       ├── /server/:id/activity     — Activity log
+│       ├── /server/:id/shell        — Shell
+│       └── /server/:id/mods         — Mods (Modrinth)
+└── /_admin                          — Admin guard + admin shadcn Sidebar layout (separate from _authed)
+    └── /admin                       — Admin path segment wrapper (Outlet)
+        ├── /admin/                  — Admin dashboard (live counts)
+        ├── /admin/users             — Users CRUD (table + create/edit/delete)
+        ├── /admin/servers           — Servers management (suspend/reinstall/delete)
+        ├── /admin/nodes             — Nodes CRUD (with location dropdown)
+        └── /admin/locations         — Locations CRUD
 ```
 
-### NavBar
+### Navigation: shadcn Sidebar System
 
-The top navbar in `_authed.tsx` shows:
-- **Pyrotype** logo (links to `/`)
-- **Servers** link
-- **Account** link
-- **Admin** link (only if `userData.rootAdmin`)
-- Username display + **Logout** button
+The app uses the shadcn/ui Sidebar component (`src/components/ui/sidebar.tsx`) throughout. Three separate sidebar layouts:
+
+**1. Client Sidebar (`_authed.tsx`)**
+- `SidebarProvider` + `Sidebar` (variant="inset", collapsible="icon")
+- Header: Flame icon + "Pyrotype" brand
+- Navigation group: Dashboard link
+- Account group: Profile, API Keys, SSH Keys, Activity
+- Admin group (conditional on `rootAdmin`): Admin Panel link
+- Footer: User avatar + username + email + logout button
+- `SidebarRail` for resize handle
+- Mobile: `SidebarTrigger` in top bar inside `SidebarInset`
+- **Conditional rendering**: When pathname starts with `/server/`, renders bare `<Outlet />` (lets server layout provide its own sidebar)
+
+**2. Server Sidebar (`_authed/server/$id.tsx`)**
+- Own `SidebarProvider` + `Sidebar` (variant="sidebar", collapsible="icon")
+- Header: Back-to-servers link (ArrowLeft), server name, StatusBadge
+- Server group: 11 nav items (Console, Files, Databases, Backups, Network, Users, Schedules, Startup, Settings, Activity, Software)
+- Footer: Server ID display
+- `SidebarMenuButton` with `isActive` based on pathname matching + tooltips
+
+**3. Admin Sidebar (`_admin.tsx`)**
+- Own `SidebarProvider` + `Sidebar` (variant="inset", collapsible="icon")
+- Rose/red color accent to visually distinguish from client panel
+- Header: Shield icon + "Admin Panel"
+- Management group: Overview, Users, Servers, Nodes, Locations
+- Navigation group: "Back to Panel" link
+- Footer: User avatar + username
+- Auth guard: redirects to `/` if not `rootAdmin`, redirects to `/auth/login` if not authenticated
+
+All three sidebars support:
+- Collapsible icon-only mode (Ctrl+B keyboard shortcut)
+- Mobile responsive (becomes Sheet/drawer)
+- Tooltips in collapsed state
+- Smooth transitions
 
 ---
 
@@ -334,17 +380,19 @@ getAdminOverview() — returns { users, servers, nodes, locations } counts
 
 | File | Purpose |
 |------|---------|
-| `src/routes/__root.tsx` | Root layout (QueryClientProvider, reads window.PterodactylUser) |
-| `src/routes/_authed.tsx` | Auth guard + NavBar + Outlet |
+| `src/routes/__root.tsx` | Root layout (Toaster + Outlet) |
+| `src/routes/_authed.tsx` | Auth guard + shadcn Sidebar (client layout) |
 | `src/routes/_authed/index.tsx` | Dashboard (server list) |
-| `src/routes/_authed/admin.tsx` | Admin layout with tab navigation |
-| `src/routes/_authed/admin/index.tsx` | Admin dashboard with live counts |
-| `src/routes/_authed/admin/users.tsx` | Users CRUD page |
-| `src/routes/_authed/admin/servers.tsx` | Servers management page |
-| `src/routes/_authed/admin/nodes.tsx` | Nodes CRUD page |
-| `src/routes/_authed/admin/locations.tsx` | Locations CRUD page |
-| `src/routes/_authed/account.tsx` | Account layout with sidebar |
-| `src/routes/_authed/server/$id.tsx` | Server layout (sidebar, WebSocket, ServerStoreProvider) |
+| `src/routes/_authed/account.tsx` | Account wrapper (just Outlet — nav in main sidebar) |
+| `src/routes/_authed/server/$id.tsx` | Server layout (own SidebarProvider + sidebar + ServerStoreProvider) |
+| `src/routes/_admin.tsx` | Admin guard + shadcn Sidebar (admin layout, rose-themed) |
+| `src/routes/_admin/admin.tsx` | Admin path segment wrapper (Outlet) |
+| `src/routes/_admin/admin/index.tsx` | Admin dashboard with live counts |
+| `src/routes/_admin/admin/users.tsx` | Users CRUD page |
+| `src/routes/_admin/admin/servers.tsx` | Servers management page |
+| `src/routes/_admin/admin/nodes.tsx` | Nodes CRUD page |
+| `src/routes/_admin/admin/locations.tsx` | Locations CRUD page |
+| `src/components/ui/sidebar.tsx` | shadcn Sidebar component (full API) |
 | `src/store/index.ts` | Zustand store (5 slices composed) |
 | `src/lib/api/http.ts` | Axios instance + fractal types |
 | `src/lib/api/admin/index.ts` | Admin API client with typed functions |
@@ -352,7 +400,49 @@ getAdminOverview() — returns { users, servers, nodes, locations } counts
 | `src/lib/api/auth/login-checkpoint.ts` | 2FA checkpoint API call |
 | `src/lib/api/auth/reset-password.ts` | Password reset API calls |
 | `vite.config.ts` | Vite config with /api proxy to :3001 |
-| `tsconfig.json` | TypeScript config with @/ path alias |
+| `tsconfig.json` | TypeScript config with @/ and #/ path aliases |
+
+---
+
+## Component Inventory
+
+### UI Components (`src/components/ui/` — 28 files)
+alert, alert-dialog, avatar, badge, button, card, checkbox, command, context-menu, dialog, dropdown-menu, form, input, label, pagination, popover, progress, select, separator, sheet, sidebar, skeleton, sonner, switch, table, tabs, textarea, tooltip
+
+### Layout Components (`src/components/layout/` — 6 files)
+main-sidebar, main-wrapper, mobile-menu, mobile-top-bar, page-header, pyro-logo
+
+### Element Components (`src/components/elements/` — 9 files)
+activity-log-entry, can (permission-based), captcha, command-palette, copy-on-click, Editor (CodeMirror), error-boundary, screen-block, spinner
+
+### Server Components (`src/components/server/` — ~60 files)
+- **Backups (6):** container, elytra variants, wings variants, unified-backups hook
+- **Console (10):** container, power-buttons, status-pill, details-block, stat-block, stat-graphs, chart-block, chart utility
+- **Databases (3):** container, row, rotate-password
+- **Files (11):** container, edit, breadcrumbs, row, dropdown, modals, mass-actions, checkbox, upload
+- **Modrinth (9):** container, list, card, selectors, download utilities, config/features
+- **Network (4):** container, allocation-row, delete-button, subdomain-management
+- **Schedules (9):** container, edit-container, row, cron-row, task-row, modals, cheatsheet-cards
+- **Settings (3):** container, rename-box, reinstall-box
+- **Shell (1):** container
+- **Startup (2):** container, variable-box
+- **Users (6):** container, row, create, edit, form, remove-button
+
+### Custom Hooks
+- `src/hooks/use-mobile.ts` — Responsive mobile detection (used by sidebar)
+- `src/lib/hooks/useDeepCompareEffect.ts` — Effect with deep equality
+- `src/lib/hooks/useDeepCompareMemo.ts` — Memo with deep equality
+- `src/lib/hooks/useDeepMemoize.ts` — Deep memoization utility
+- `src/lib/hooks/useFlash.ts` — Toast notification API
+- `src/lib/hooks/usePermissions.ts` — Permission checking
+- `src/lib/hooks/usePersistedState.ts` — localStorage persistence
+- `src/lib/hooks/useWebsocketEvent.ts` — WebSocket event subscription
+
+### Validators (`src/lib/validators/`)
+- `auth.ts` — loginSchema, forgotPasswordSchema, resetPasswordSchema, loginCheckpointSchema
+- `account.ts` — updateEmailSchema, updatePasswordSchema, createApiKeySchema, sshKeySchema
+- `server.ts` — createDatabaseSchema, createScheduleSchema, createScheduleTaskSchema, renameServerSchema, chmodSchema
+- `common.ts` — paginationSchema
 
 ---
 
@@ -426,7 +516,7 @@ getAdminOverview() — returns { users, servers, nodes, locations } counts
 
 4. **Admin routes 401 with session auth** — Admin routes only accepted API key Bearer tokens, not session cookies. Fixed by adding `requireAdminAccess` middleware.
 
-5. **No sidebar/navigation on dashboard** — `_authed.tsx` rendered bare `<Outlet />`. Fixed by adding NavBar component.
+5. **No sidebar/navigation on dashboard** — Original `_authed.tsx` rendered bare `<Outlet />`. Fixed first with NavBar, then redesigned with shadcn Sidebar system.
 
 ### Low-Severity Security Findings (not yet fixed)
 
@@ -499,6 +589,16 @@ datasource db {
 
 8. **Low-severity security fixes** — Non-string login input causing 500, invalid JSON body returning 500.
 
+9. **Features from Pyrodactyl not yet ported**:
+   - Game server feature modals (GSL Token, Hytale OAuth, Java Version, PID Limit, Steam Disk Space, EULA — 8 components)
+   - MCLogs integration (Minecraft log aggregation — 518 LOC + utility)
+   - Operation progress modals (Wings + Elytra — 520 LOC combined)
+   - Server transfer listener
+   - Conflict state renderer
+   - Install listener (installation progress)
+   - Uptime duration display
+   - i18n/Localization (full `resources/lang/` directory)
+
 ---
 
 ## Original Source Reference
@@ -516,4 +616,6 @@ The original Pyrodactyl source is at `C:/Users/night/Pyro/pyrodactyl/`. Key refe
 | `pyrodactyl/resources/scripts/components/server/WebsocketHandler.tsx` | WebSocket lifecycle |
 | `pyrodactyl/resources/scripts/components/server/console/Console.tsx` | xterm.js terminal |
 | `pyrodactyl/resources/scripts/api/server/getServer.ts` | Server fetch with daemon type routing |
+| `pyrodactyl/resources/scripts/components/server/shell/ShellContainer.tsx` | Shell container (1322 LOC — largest) |
+| `pyrodactyl/resources/scripts/components/server/backups/BackupContainer.tsx` | Backup management (895 LOC) |
 | `pyrodactyl/package.json` | All current dependencies |

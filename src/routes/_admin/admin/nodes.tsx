@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-export const Route = createFileRoute('/_authed/admin/nodes' as any)({
+export const Route = createFileRoute('/_admin/admin/nodes' as any)({
   component: AdminNodesPage,
 })
 
@@ -146,7 +146,7 @@ function AdminNodesPage() {
   const formatMB = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`)
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Nodes</h1>
         <Button onClick={openCreate}>Create Node</Button>

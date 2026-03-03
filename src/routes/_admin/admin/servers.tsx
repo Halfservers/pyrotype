@@ -17,9 +17,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '#/components/ui/table'
-import { Badge } from '#/components/ui/badge'
-import { Button } from '#/components/ui/button'
+} from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,9 +29,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '#/components/ui/alert-dialog'
+} from '@/components/ui/alert-dialog'
 
-export const Route = createFileRoute('/_authed/admin/servers' as any)({
+export const Route = createFileRoute('/_admin/admin/servers' as any)({
   component: AdminServersPage,
 })
 
@@ -114,7 +114,7 @@ function AdminServersPage() {
   }
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold mb-6">Servers</h1>
 
       {loading && !data ? (

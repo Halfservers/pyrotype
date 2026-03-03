@@ -1,8 +1,28 @@
 import { Outlet, Link, createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import {
+  User, Shield, LogOut, Flame, LayoutDashboard,
+  Key, Terminal, Activity,
+} from 'lucide-react'
 
 import { useAppStore } from '@/store'
 import http from '@/lib/api/http'
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarInset,
+  SidebarRail,
+  SidebarTrigger,
+} from '@/components/ui/sidebar'
+import { Separator } from '@/components/ui/separator'
 
 export const Route = createFileRoute('/_authed' as any)({
   component: AuthedLayout,
@@ -13,6 +33,7 @@ function AuthedLayout() {
   const setUserData = useAppStore((s) => s.setUserData)
   const navigate = useNavigate()
   const [checked, setChecked] = useState(false)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   useEffect(() => {
     if (!userData?.uuid) {
@@ -34,59 +55,132 @@ function AuthedLayout() {
     navigate({ to: '/auth/login' })
   }
 
-  return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
-      <NavBar userData={userData!} onLogout={handleLogout} />
-      <div className="flex-1">
-        <Outlet />
-      </div>
-    </div>
-  )
-}
-
-function NavBar({ userData, onLogout }: { userData: { username: string; email: string; rootAdmin: boolean }; onLogout: () => void }) {
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-
-  const linkClass = (path: string) => {
-    const active = pathname === path || (path !== '/' && pathname.startsWith(path))
-    return `px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-      active
-        ? 'bg-white/10 text-white'
-        : 'text-zinc-400 hover:text-white hover:bg-white/5'
-    }`
+  // Server pages provide their own sidebar
+  if (pathname.startsWith('/server/')) {
+    return <Outlet />
   }
 
   return (
-    <nav className="border-b border-white/[0.08] bg-black/40 backdrop-blur-sm sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14">
-          <div className="flex items-center gap-1">
-            <Link to="/" className="text-lg font-bold text-white mr-6">
-              Pyrotype
-            </Link>
-            <Link to="/" className={linkClass('/')}>
-              Servers
-            </Link>
-            <Link to="/account" className={linkClass('/account')}>
-              Account
-            </Link>
-            {userData.rootAdmin && (
-              <Link to="/admin" className={linkClass('/admin')}>
-                Admin
-              </Link>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-zinc-400">{userData.username}</span>
-            <button
-              onClick={onLogout}
-              className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white hover:bg-white/5 rounded-md transition-colors"
-            >
-              Logout
-            </button>
-          </div>
+    <SidebarProvider>
+      <AppSidebar userData={userData!} onLogout={handleLogout} pathname={pathname} />
+      <SidebarInset className="bg-[#0a0a0a]">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/[0.06] px-4 md:hidden">
+          <SidebarTrigger className="text-zinc-400 hover:text-white" />
+          <Separator orientation="vertical" className="mr-2 h-4 bg-white/[0.06]" />
+          <span className="text-sm font-medium text-zinc-300">Pyrotype</span>
+        </header>
+        <div className="flex-1">
+          <Outlet />
         </div>
-      </div>
-    </nav>
+      </SidebarInset>
+    </SidebarProvider>
+  )
+}
+
+const accountItems = [
+  { label: 'Profile', path: '/account', icon: User, match: (p: string) => p === '/account' || p === '/account/' },
+  { label: 'API Keys', path: '/account/api', icon: Key },
+  { label: 'SSH Keys', path: '/account/ssh', icon: Terminal },
+  { label: 'Activity', path: '/account/activity', icon: Activity },
+] as const
+
+function AppSidebar({
+  userData,
+  onLogout,
+  pathname,
+}: {
+  userData: { username: string; email: string; rootAdmin: boolean }
+  onLogout: () => void
+  pathname: string
+}) {
+  const isActive = (item: { path: string; match?: (p: string) => boolean }) => {
+    if (item.match) return item.match(pathname)
+    return pathname.startsWith(item.path)
+  }
+
+  return (
+    <Sidebar variant="inset" collapsible="icon" className="border-r-0">
+      <SidebarHeader className="p-3">
+        <Link to="/" className="flex items-center gap-2 px-1">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand/20">
+            <Flame className="size-4 text-brand" />
+          </div>
+          <span className="text-lg font-bold text-white tracking-tight group-data-[collapsible=icon]:hidden">
+            Pyrotype
+          </span>
+        </Link>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={pathname === '/' || pathname === ''} tooltip="Dashboard">
+                <Link to="/">
+                  <LayoutDashboard className="size-4" />
+                  <span>Dashboard</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Account</SidebarGroupLabel>
+          <SidebarMenu>
+            {accountItems.map((item) => {
+              const Icon = item.icon
+              return (
+                <SidebarMenuItem key={item.path}>
+                  <SidebarMenuButton asChild isActive={isActive(item)} tooltip={item.label}>
+                    <Link to={item.path as any}>
+                      <Icon className="size-4" />
+                      <span>{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+
+        {userData.rootAdmin && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Admin</SidebarGroupLabel>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname.startsWith('/admin')} tooltip="Admin Panel">
+                  <Link to="/admin">
+                    <Shield className="size-4" />
+                    <span>Admin Panel</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+      </SidebarContent>
+
+      <SidebarFooter className="p-3">
+        <div className="flex items-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:bg-transparent">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand/20">
+            <span className="text-[10px] font-bold text-brand">{userData.username[0]?.toUpperCase()}</span>
+          </div>
+          <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+            <p className="text-sm font-medium text-zinc-200 truncate">{userData.username}</p>
+            <p className="text-xs text-zinc-500 truncate">{userData.email}</p>
+          </div>
+          <button
+            onClick={onLogout}
+            className="shrink-0 text-zinc-500 hover:text-red-400 transition-colors group-data-[collapsible=icon]:hidden"
+            aria-label="Logout"
+          >
+            <LogOut className="size-4" />
+          </button>
+        </div>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   )
 }

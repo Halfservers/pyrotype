@@ -1,28 +1,47 @@
 import { createFileRoute, Link, Outlet, useLocation } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
+import {
+  Terminal, FolderOpen, Database, Archive, Globe, Users,
+  Calendar, Rocket, Settings, Activity, Package, ArrowLeft,
+} from 'lucide-react'
 
 import getServer from '@/lib/api/server/get-server'
 import { httpErrorToHuman } from '@/lib/api/http'
 import { ServerStoreProvider } from '@/store/ServerStoreProvider'
 import { useServerStore } from '@/store/server'
-import { cn } from '@/lib/utils'
+import {
+  SidebarProvider,
+  Sidebar,
+  SidebarHeader,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarInset,
+  SidebarRail,
+  SidebarTrigger,
+} from '@/components/ui/sidebar'
+import { Separator } from '@/components/ui/separator'
 
 export const Route = createFileRoute('/_authed/server/$id' as any)({
   component: ServerLayout,
 })
 
 const serverNavItems = [
-  { label: 'Console', path: '', permission: null, end: true },
-  { label: 'Files', path: 'files', permission: 'file.*' },
-  { label: 'Databases', path: 'databases', permission: 'database.*', featureLimit: 'databases' as const },
-  { label: 'Backups', path: 'backups', permission: 'backup.*', featureLimit: 'backups' as const },
-  { label: 'Network', path: 'network', permission: 'allocation.*' },
-  { label: 'Users', path: 'users', permission: 'user.*' },
-  { label: 'Schedules', path: 'schedules', permission: 'schedule.*' },
-  { label: 'Startup', path: 'startup', permission: ['startup.read', 'startup.update', 'startup.docker-image'] },
-  { label: 'Settings', path: 'settings', permission: ['settings.*', 'file.sftp'] },
-  { label: 'Activity', path: 'activity', permission: 'activity.*' },
-  { label: 'Software', path: 'shell', permission: 'startup.software' },
+  { label: 'Console', path: '', icon: Terminal, end: true },
+  { label: 'Files', path: 'files', icon: FolderOpen },
+  { label: 'Databases', path: 'databases', icon: Database },
+  { label: 'Backups', path: 'backups', icon: Archive },
+  { label: 'Network', path: 'network', icon: Globe },
+  { label: 'Users', path: 'users', icon: Users },
+  { label: 'Schedules', path: 'schedules', icon: Calendar },
+  { label: 'Startup', path: 'startup', icon: Rocket },
+  { label: 'Settings', path: 'settings', icon: Settings },
+  { label: 'Activity', path: 'activity', icon: Activity },
+  { label: 'Software', path: 'shell', icon: Package },
 ] as const
 
 function ServerLayout() {
@@ -30,6 +49,28 @@ function ServerLayout() {
     <ServerStoreProvider>
       <ServerLayoutInner />
     </ServerStoreProvider>
+  )
+}
+
+function StatusBadge({ status }: { status?: string | null }) {
+  const styles: Record<string, string> = {
+    running: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
+    starting: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20',
+    stopping: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20',
+    offline: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/20',
+    suspended: 'bg-red-500/15 text-red-400 border-red-500/20',
+    installing: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
+  }
+  const style = styles[status ?? ''] ?? styles.offline
+  const label = status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown'
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg border ${style}`}
+    >
+      <span className="w-1.5 h-1.5 rounded-full bg-current" />
+      {label}
+    </span>
   )
 }
 
@@ -67,14 +108,14 @@ function ServerLayoutInner() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a] text-white">
+      <div className="flex min-h-svh items-center justify-center bg-[#0a0a0a]">
         <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">Something went wrong</h2>
-          <p className="text-zinc-400">{error}</p>
-          <Link
-            to="/"
-            className="mt-4 inline-block text-sm text-brand hover:underline"
-          >
+          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
+            <Terminal className="w-7 h-7 text-red-400" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Something went wrong</h2>
+          <p className="text-zinc-400 text-sm mb-4">{error}</p>
+          <Link to="/" className="text-sm text-brand hover:underline">
             Return to Dashboard
           </Link>
         </div>
@@ -84,63 +125,89 @@ function ServerLayoutInner() {
 
   if (loading || !server) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand" />
+      <div className="flex min-h-svh items-center justify-center bg-[#0a0a0a]">
+        <div className="w-8 h-8 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="flex flex-row w-full min-h-screen bg-[#0a0a0a]">
-      <aside className="hidden lg:flex lg:shrink-0 w-[260px] bg-[#1a1a1a] flex-col h-screen sticky top-0 p-6">
-        <Link to="/" className="flex shrink-0 h-8 w-fit mb-4">
-          <span className="text-xl font-bold text-white tracking-tight">Pyrotype</span>
-        </Link>
+    <SidebarProvider>
+      <ServerSidebar id={id} server={server} pathname={location.pathname} />
+      <SidebarInset className="bg-[#0a0a0a]">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-white/[0.06] px-4 md:hidden">
+          <SidebarTrigger className="text-zinc-400 hover:text-white" />
+          <Separator orientation="vertical" className="mr-2 h-4 bg-white/[0.06]" />
+          <span className="text-sm font-medium text-zinc-300 truncate">{server.name}</span>
+        </header>
+        <Outlet />
+      </SidebarInset>
+    </SidebarProvider>
+  )
+}
 
-        <div aria-hidden className="mt-4 mb-4 bg-[#ffffff33] min-h-[1px] w-6" />
+function ServerSidebar({
+  id,
+  server,
+  pathname,
+}: {
+  id: string
+  server: any
+  pathname: string
+}) {
+  const basePath = `/server/${id}`
 
-        <nav className="flex-grow overflow-y-auto">
-          <ul className="space-y-1">
-            {serverNavItems.map((item) => {
-              const basePath = `/server/${id}`
-              const fullPath = item.path
-                ? `${basePath}/${item.path}`
-                : basePath
-              const isActive = ('end' in item && item.end)
-                ? location.pathname === fullPath ||
-                  location.pathname === `${fullPath}/`
-                : location.pathname.startsWith(fullPath)
-
-              return (
-                <li key={item.label}>
-                  <Link
-                    to={fullPath as any}
-                    className={cn(
-                      'block px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                      isActive
-                        ? 'bg-[#ffffff11] text-white'
-                        : 'text-zinc-400 hover:text-white hover:bg-[#ffffff09]',
-                    )}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        </nav>
-
-        <div className="shrink-0 mt-4">
-          <div aria-hidden className="mb-4 bg-[#ffffff33] min-h-[1px] w-full" />
-          <div className="p-4 bg-[#ffffff09] border border-[#ffffff11] shadow-xs rounded-xl text-center text-sm text-zinc-300">
-            {server.name}
+  return (
+    <Sidebar variant="sidebar" collapsible="icon">
+      <SidebarHeader className="p-3">
+        <SidebarMenuButton asChild tooltip="Back to servers" className="mb-2">
+          <Link to="/" className="flex items-center gap-2 text-zinc-400 hover:text-white">
+            <ArrowLeft className="size-4 shrink-0" />
+            <span>Back to servers</span>
+          </Link>
+        </SidebarMenuButton>
+        <div className="px-1 group-data-[collapsible=icon]:hidden">
+          <p className="font-semibold text-white text-sm truncate">{server.name}</p>
+          <div className="mt-1.5">
+            <StatusBadge status={(server as any).status} />
           </div>
         </div>
-      </aside>
+      </SidebarHeader>
 
-      <main className="flex-1 w-full overflow-y-auto overflow-x-hidden rounded-md bg-[#08080875]">
-        <Outlet />
-      </main>
-    </div>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Server</SidebarGroupLabel>
+          <SidebarMenu>
+            {serverNavItems.map((item) => {
+              const Icon = item.icon
+              const fullPath = item.path ? `${basePath}/${item.path}` : basePath
+              const isActive =
+                'end' in item && item.end
+                  ? pathname === fullPath || pathname === `${fullPath}/`
+                  : pathname.startsWith(fullPath)
+
+              return (
+                <SidebarMenuItem key={item.label}>
+                  <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
+                    <Link to={fullPath as any}>
+                      <Icon className="size-4" />
+                      <span>{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter className="p-3">
+        <div className="rounded-lg bg-white/[0.04] px-3 py-2 group-data-[collapsible=icon]:hidden">
+          <p className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">Server ID</p>
+          <p className="text-xs text-zinc-400 font-mono truncate mt-0.5">{id}</p>
+        </div>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   )
 }

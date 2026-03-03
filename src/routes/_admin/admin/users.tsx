@@ -30,7 +30,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 
-export const Route = createFileRoute('/_authed/admin/users' as any)({
+export const Route = createFileRoute('/_admin/admin/users' as any)({
   component: AdminUsersPage,
 })
 
@@ -157,7 +157,7 @@ function AdminUsersPage() {
   const pagination = data?.meta?.pagination
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Users</h1>
         <Button onClick={openCreate}>Create User</Button>
