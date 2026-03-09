@@ -43,6 +43,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+        working-directory: server
+      - run: npx prisma generate
+        working-directory: server
       - run: pnpm build
 
   typecheck:
