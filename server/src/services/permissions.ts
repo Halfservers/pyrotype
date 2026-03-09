@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@/generated/prisma'
+import type { PrismaClient } from '../generated/prisma'
 import { SYSTEM_PERMISSIONS } from '../constants/permissions'
 
 interface ServerLike {

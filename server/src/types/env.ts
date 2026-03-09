@@ -21,14 +21,14 @@ export interface SessionData {
 }
 
 export interface HonoVariables {
-  prisma: import('@/generated/prisma').PrismaClient
+  prisma: import('../generated/prisma').PrismaClient
   kv: KVNamespace
   queue: Queue
-  user?: import('@/generated/prisma').User & { rootAdmin: boolean }
-  server?: import('@/generated/prisma').Server & { node?: import('@/generated/prisma').Node; allocation?: import('@/generated/prisma').Allocation; egg?: import('@/generated/prisma').Egg }
+  user?: import('../generated/prisma').User & { rootAdmin: boolean }
+  server?: import('../generated/prisma').Server & { node?: import('../generated/prisma').Node; allocation?: import('../generated/prisma').Allocation; egg?: import('../generated/prisma').Egg }
   serverPermissions?: string[]
-  node?: import('@/generated/prisma').Node
-  apiKey?: import('@/generated/prisma').ApiKey
+  node?: import('../generated/prisma').Node
+  apiKey?: import('../generated/prisma').ApiKey
   session?: SessionData | null
   sessionId?: string
 }

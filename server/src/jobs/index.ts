@@ -1,5 +1,5 @@
 import type { Env } from '../types/env'
-import type { PrismaClient } from '@/generated/prisma'
+import type { PrismaClient } from '../generated/prisma'
 import { processBackupJob } from './backupJob'
 import { processCleanupJob } from './cleanupJob'
 import { processScheduleJob } from './scheduleRunner'

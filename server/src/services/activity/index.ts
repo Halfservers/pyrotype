@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@/generated/prisma'
+import type { PrismaClient } from '../../generated/prisma'
 
 interface ActivityEntry {
   event: string

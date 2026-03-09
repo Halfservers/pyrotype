@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@/generated/prisma'
+import type { PrismaClient } from '../generated/prisma'
 import { daemonRequest } from '../services/daemon/proxy'
 import { generateUuid } from '../utils/crypto'
 import { rotateOldestBackup } from '../services/backups'

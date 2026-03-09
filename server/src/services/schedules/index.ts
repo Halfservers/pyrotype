@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@/generated/prisma'
+import type { PrismaClient } from '../../generated/prisma'
 import { logger } from '../../config/logger'
 
 function parseCronField(field: string, min: number, max: number): number[] {
