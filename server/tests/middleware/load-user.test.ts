@@ -1,93 +1,138 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import express, { type Request, type Response, type NextFunction } from 'express';
-import session from 'express-session';
-import supertest from 'supertest';
-import { loadUser } from '../../src/middleware/loadUser';
-import { errorHandler } from '../../src/middleware/errorHandler';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Hono } from 'hono'
+import { loadUser } from '../../src/middleware/loadUser'
+import { onError } from '../../src/middleware/errorHandler'
+import { createMockPrisma, createMockKV } from '../helpers/test-app'
+import type { Env, HonoVariables } from '../../src/types/env'
 
-const mockFindUnique = vi.fn();
+type AppEnv = { Bindings: Env; Variables: HonoVariables }
 
-vi.mock('../../src/config/database', () => ({
-  prisma: {
-    user: { findUnique: (...args: any[]) => mockFindUnique(...args) },
-  },
-}));
+// Mock the session service
+vi.mock('../../src/services/auth/session', () => ({
+  loadSession: vi.fn(),
+}))
 
-function createApp() {
-  const app = express();
-  app.use(express.json());
-  app.use(
-    session({
-      secret: 'test-secret',
-      resave: false,
-      saveUninitialized: false,
-    }),
-  );
+// Import after mock
+import { loadSession } from '../../src/services/auth/session'
+const mockLoadSession = vi.mocked(loadSession)
 
-  // Set session userId via header for testing
-  app.use((req: Request, _res: Response, next: NextFunction) => {
-    if (req.headers['x-test-user-id']) {
-      (req.session as any).userId = Number(req.headers['x-test-user-id']);
+function buildApp(opts?: {
+  prisma?: ReturnType<typeof createMockPrisma>
+  kv?: ReturnType<typeof createMockKV>
+}) {
+  const prisma = opts?.prisma ?? createMockPrisma()
+  const kv = opts?.kv ?? createMockKV()
+
+  const app = new Hono<AppEnv>()
+
+  // Set up bindings and variables
+  app.use('*', async (c, next) => {
+    // Inject bindings for loadUser (it reads c.env.SESSION_KV, c.env.APP_KEY)
+    ;(c.env as any) = {
+      SESSION_KV: kv,
+      APP_KEY: 'test-app-key',
     }
-    next();
-  });
+    c.set('prisma', prisma as any)
+    await next()
+  })
 
-  app.use(loadUser);
+  app.use('*', loadUser)
 
-  app.get('/test', (req: Request, res: Response) => {
-    res.json({
-      ok: true,
-      user: (req as any).user || null,
-    });
-  });
+  app.get('/test', (c) => c.json({ ok: true, user: c.var.user ?? null }))
+  app.onError(onError)
 
-  app.use(errorHandler);
-  return app;
+  return { app, prisma, kv }
 }
 
 describe('loadUser middleware', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-  });
+    vi.clearAllMocks()
+  })
 
-  it('should load user into req.user when session has userId', async () => {
-    const fakeUser = { id: 1, username: 'admin', rootAdmin: true, email: 'admin@test.com' };
-    mockFindUnique.mockResolvedValue(fakeUser);
+  it('should load user into c.var.user when session cookie is valid', async () => {
+    const prisma = createMockPrisma()
+    const fakeUser = { id: 1, username: 'admin', rootAdmin: true, email: 'admin@test.com' }
+    prisma.user.findUnique.mockResolvedValue(fakeUser)
+    mockLoadSession.mockResolvedValue({
+      sessionId: 'sess-123',
+      data: { userId: 1 },
+    })
 
-    const app = createApp();
-    const res = await supertest(app).get('/test').set('x-test-user-id', '1');
+    const { app } = buildApp({ prisma })
 
-    expect(res.status).toBe(200);
-    expect(res.body.user).toMatchObject({ id: 1, username: 'admin', rootAdmin: true });
-    expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: 1 } });
-  });
+    const res = await app.request('/test', {
+      headers: { Cookie: 'pyrotype_session=signed-cookie-value' },
+    })
 
-  it('should continue without user when no session userId', async () => {
-    const app = createApp();
-    const res = await supertest(app).get('/test');
+    expect(res.status).toBe(200)
+    const body = await res.json() as any
+    expect(body.user).toMatchObject({ id: 1, username: 'admin', rootAdmin: true })
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 1 } })
+  })
 
-    expect(res.status).toBe(200);
-    expect(res.body.user).toBeNull();
-    expect(mockFindUnique).not.toHaveBeenCalled();
-  });
+  it('should continue without user when no session cookie', async () => {
+    const prisma = createMockPrisma()
+    const { app } = buildApp({ prisma })
+
+    const res = await app.request('/test')
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as any
+    expect(body.user).toBeNull()
+    expect(prisma.user.findUnique).not.toHaveBeenCalled()
+  })
+
+  it('should continue without user when session is invalid', async () => {
+    mockLoadSession.mockResolvedValue(null)
+
+    const prisma = createMockPrisma()
+    const { app } = buildApp({ prisma })
+
+    const res = await app.request('/test', {
+      headers: { Cookie: 'pyrotype_session=invalid-cookie' },
+    })
+
+    expect(res.status).toBe(200)
+    const body = await res.json() as any
+    expect(body.user).toBeNull()
+    expect(prisma.user.findUnique).not.toHaveBeenCalled()
+  })
 
   it('should continue without user when user not found in DB', async () => {
-    mockFindUnique.mockResolvedValue(null);
+    const prisma = createMockPrisma()
+    prisma.user.findUnique.mockResolvedValue(null)
+    mockLoadSession.mockResolvedValue({
+      sessionId: 'sess-456',
+      data: { userId: 9999 },
+    })
 
-    const app = createApp();
-    const res = await supertest(app).get('/test').set('x-test-user-id', '9999');
+    const { app } = buildApp({ prisma })
 
-    expect(res.status).toBe(200);
-    expect(res.body.user).toBeNull();
-  });
+    const res = await app.request('/test', {
+      headers: { Cookie: 'pyrotype_session=signed-cookie' },
+    })
 
-  it('should pass errors to next()', async () => {
-    mockFindUnique.mockRejectedValue(new Error('DB connection failed'));
+    expect(res.status).toBe(200)
+    const body = await res.json() as any
+    expect(body.user).toBeNull()
+  })
 
-    const app = createApp();
-    const res = await supertest(app).get('/test').set('x-test-user-id', '1');
+  it('should propagate errors thrown by prisma', async () => {
+    const prisma = createMockPrisma()
+    prisma.user.findUnique.mockRejectedValue(new Error('DB connection failed'))
+    mockLoadSession.mockResolvedValue({
+      sessionId: 'sess-789',
+      data: { userId: 1 },
+    })
 
-    expect(res.status).toBe(500);
-    expect(res.body.errors[0].detail).toBe('An unexpected error occurred.');
-  });
-});
+    const { app } = buildApp({ prisma })
+
+    const res = await app.request('/test', {
+      headers: { Cookie: 'pyrotype_session=signed-cookie' },
+    })
+
+    expect(res.status).toBe(500)
+    const body = await res.json() as any
+    expect(body.errors[0].detail).toBe('An unexpected error occurred.')
+  })
+})

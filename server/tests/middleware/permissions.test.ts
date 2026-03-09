@@ -1,181 +1,127 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import express, { type Request, type Response, type NextFunction } from 'express';
-import supertest from 'supertest';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Hono } from 'hono'
 import {
   authenticateServerAccess,
   requirePermission,
   validateServerState,
-} from '../../src/middleware/permissions';
-import { errorHandler } from '../../src/middleware/errorHandler';
+} from '../../src/middleware/permissions'
+import { onError } from '../../src/middleware/errorHandler'
+import {
+  createTestHono,
+  createMockPrisma,
+  MOCK_ADMIN,
+  MOCK_USER,
+} from '../helpers/test-app'
+import type { Env, HonoVariables } from '../../src/types/env'
 
-// Mock prisma
-const mockServerFindFirst = vi.fn();
-const mockSubuserFindFirst = vi.fn();
+type AppType = { Bindings: Env; Variables: HonoVariables }
 
-vi.mock('../../src/config/database', () => ({
-  prisma: {
-    server: { findFirst: (...args: any[]) => mockServerFindFirst(...args) },
-    subuser: { findFirst: (...args: any[]) => mockSubuserFindFirst(...args) },
-  },
-}));
-
-function createApp(
-  middleware: any[],
-  opts: {
-    user?: any;
-    server?: any;
-    serverPermissions?: string[];
-    routeParam?: string;
-  } = {},
-) {
-  const app = express();
-  app.use(express.json());
-
-  // Inject user before middleware
-  if (opts.user) {
-    app.use((req: Request, _res: Response, next: NextFunction) => {
-      (req as any).user = opts.user;
-      next();
-    });
-  }
-
-  // Inject server and permissions for validateServerState / requirePermission tests
-  if (opts.server) {
-    app.use((req: Request, _res: Response, next: NextFunction) => {
-      (req as any).server = opts.server;
-      next();
-    });
-  }
-  if (opts.serverPermissions) {
-    app.use((req: Request, _res: Response, next: NextFunction) => {
-      (req as any).serverPermissions = opts.serverPermissions;
-      next();
-    });
-  }
-
-  const paramPath = opts.routeParam ? `/:server` : '/test';
-
-  for (const mw of middleware) {
-    if (opts.routeParam) {
-      app.use('/:server', mw);
-    } else {
-      app.use(mw);
-    }
-  }
-
-  app.get(paramPath, (_req: Request, res: Response) => {
-    res.json({
-      ok: true,
-      server: (_req as any).server ? { id: (_req as any).server.id } : null,
-      permissions: (_req as any).serverPermissions,
-    });
-  });
-
-  app.use(errorHandler);
-  return app;
+const FAKE_SERVER = {
+  id: 1,
+  uuid: 'abc-123',
+  uuidShort: 'abc123',
+  ownerId: 2, // owned by MOCK_USER
+  status: null,
+  node: { id: 1, maintenanceMode: false },
+  allocation: { id: 1 },
+  egg: { id: 1 },
 }
 
 describe('permissions middleware', () => {
+  let prisma: ReturnType<typeof createMockPrisma>
+
   beforeEach(() => {
-    vi.clearAllMocks();
-  });
+    prisma = createMockPrisma()
+    vi.clearAllMocks()
+  })
 
   describe('authenticateServerAccess', () => {
-    const fakeServer = {
-      id: 1,
-      uuid: 'abc-123',
-      uuidShort: 'abc123',
-      ownerId: 1,
-      status: null,
-      node: { id: 1, maintenanceMode: false },
-      allocation: { id: 1 },
-      egg: { id: 1 },
-    };
+    function buildApp(user: typeof MOCK_ADMIN | null) {
+      const result = createTestHono({
+        user: user ?? undefined,
+        prisma,
+      })
+      result.app.onError(onError)
+      result.app.get('/servers/:server', authenticateServerAccess, (c) => {
+        return c.json({
+          ok: true,
+          serverId: (c.var.server as any)?.id,
+          permissions: c.var.serverPermissions,
+        })
+      })
+      return result.app
+    }
 
-    it('should load server for owner with wildcard permissions', async () => {
-      mockServerFindFirst.mockResolvedValue(fakeServer);
+    it('should grant admin user wildcard permissions on any server', async () => {
+      const serverOwnedByOther = { ...FAKE_SERVER, ownerId: 99 }
+      prisma.server.findFirst.mockResolvedValue(serverOwnedByOther)
 
-      const app = createApp([authenticateServerAccess], {
-        user: { id: 1, rootAdmin: false },
-        routeParam: 'server',
-      });
+      const app = buildApp(MOCK_ADMIN)
+      const res = await app.request('/servers/abc-123')
 
-      const res = await supertest(app).get('/abc-123');
-      expect(res.status).toBe(200);
-      expect(res.body.permissions).toEqual(['*']);
-    });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.permissions).toEqual(['*'])
+    })
 
-    it('should load server for admin with wildcard permissions', async () => {
-      const serverOwnedByOther = { ...fakeServer, ownerId: 99 };
-      mockServerFindFirst.mockResolvedValue(serverOwnedByOther);
+    it('should grant owner wildcard permissions', async () => {
+      prisma.server.findFirst.mockResolvedValue(FAKE_SERVER)
 
-      const app = createApp([authenticateServerAccess], {
-        user: { id: 2, rootAdmin: true },
-        routeParam: 'server',
-      });
+      const app = buildApp(MOCK_USER) // MOCK_USER.id === 2, FAKE_SERVER.ownerId === 2
+      const res = await app.request('/servers/abc-123')
 
-      const res = await supertest(app).get('/abc-123');
-      expect(res.status).toBe(200);
-      expect(res.body.permissions).toEqual(['*']);
-    });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.permissions).toEqual(['*'])
+    })
 
-    it('should load server for subuser with subuser permissions', async () => {
-      const serverOwnedByOther = { ...fakeServer, ownerId: 99 };
-      mockServerFindFirst.mockResolvedValue(serverOwnedByOther);
-      mockSubuserFindFirst.mockResolvedValue({
+    it('should load subuser permissions for a non-owner, non-admin user', async () => {
+      const serverOwnedByOther = { ...FAKE_SERVER, ownerId: 99 }
+      prisma.server.findFirst.mockResolvedValue(serverOwnedByOther)
+      prisma.subuser.findFirst.mockResolvedValue({
         id: 5,
         permissions: ['control.start', 'control.stop', 'file.read'],
-      });
+      })
 
-      const app = createApp([authenticateServerAccess], {
-        user: { id: 3, rootAdmin: false },
-        routeParam: 'server',
-      });
+      const app = buildApp(MOCK_USER)
+      const res = await app.request('/servers/abc-123')
 
-      const res = await supertest(app).get('/abc-123');
-      expect(res.status).toBe(200);
-      expect(res.body.permissions).toEqual(['control.start', 'control.stop', 'file.read']);
-    });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.permissions).toEqual(['control.start', 'control.stop', 'file.read'])
+    })
 
-    it('should reject non-owner/non-subuser (404)', async () => {
-      const serverOwnedByOther = { ...fakeServer, ownerId: 99 };
-      mockServerFindFirst.mockResolvedValue(serverOwnedByOther);
-      mockSubuserFindFirst.mockResolvedValue(null);
+    it('should return 404 when user is not owner and not a subuser', async () => {
+      const serverOwnedByOther = { ...FAKE_SERVER, ownerId: 99 }
+      prisma.server.findFirst.mockResolvedValue(serverOwnedByOther)
+      prisma.subuser.findFirst.mockResolvedValue(null)
 
-      const app = createApp([authenticateServerAccess], {
-        user: { id: 3, rootAdmin: false },
-        routeParam: 'server',
-      });
+      const app = buildApp(MOCK_USER)
+      const res = await app.request('/servers/abc-123')
 
-      const res = await supertest(app).get('/abc-123');
-      expect(res.status).toBe(404);
-      expect(res.body.errors[0].detail).toBe('Server not found.');
-    });
+      expect(res.status).toBe(404)
+      const body = await res.json()
+      expect(body.errors[0].detail).toBe('Server not found.')
+    })
 
-    it('should reject invalid server ID (404)', async () => {
-      mockServerFindFirst.mockResolvedValue(null);
+    it('should return 404 when server does not exist', async () => {
+      prisma.server.findFirst.mockResolvedValue(null)
 
-      const app = createApp([authenticateServerAccess], {
-        user: { id: 1, rootAdmin: false },
-        routeParam: 'server',
-      });
+      const app = buildApp(MOCK_USER)
+      const res = await app.request('/servers/nonexistent')
 
-      const res = await supertest(app).get('/nonexistent');
-      expect(res.status).toBe(404);
-      expect(res.body.errors[0].detail).toBe('Server not found.');
-    });
+      expect(res.status).toBe(404)
+      const body = await res.json()
+      expect(body.errors[0].detail).toBe('Server not found.')
+    })
 
-    it('should handle numeric server IDs', async () => {
-      mockServerFindFirst.mockResolvedValue(fakeServer);
+    it('should handle numeric server IDs in the query', async () => {
+      prisma.server.findFirst.mockResolvedValue(FAKE_SERVER)
 
-      const app = createApp([authenticateServerAccess], {
-        user: { id: 1, rootAdmin: false },
-        routeParam: 'server',
-      });
+      const app = buildApp(MOCK_USER)
+      await app.request('/servers/1')
 
-      const res = await supertest(app).get('/1');
-      expect(res.status).toBe(200);
-      expect(mockServerFindFirst).toHaveBeenCalledWith(
+      expect(prisma.server.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             OR: expect.arrayContaining([
@@ -183,129 +129,172 @@ describe('permissions middleware', () => {
             ]),
           }),
         }),
-      );
-    });
-  });
+      )
+    })
+  })
 
   describe('requirePermission', () => {
-    it('should pass with wildcard "*" permission', async () => {
-      const app = createApp([requirePermission('control.start')], {
-        serverPermissions: ['*'],
-      });
+    /**
+     * Builds a minimal app where serverPermissions are injected
+     * via middleware before requirePermission runs.
+     */
+    function buildPermApp(permissions: string[]) {
+      const result = createTestHono({ user: MOCK_USER })
+      result.app.onError(onError)
+      result.app.use('/test', async (c, next) => {
+        c.set('serverPermissions', permissions)
+        await next()
+      })
+      result.app.get('/test', requirePermission('control.start'), (c) => {
+        return c.json({ ok: true })
+      })
+      return result.app
+    }
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
+    function buildMultiPermApp(
+      requiredPerms: string[],
+      userPerms: string[],
+    ) {
+      const result = createTestHono({ user: MOCK_USER })
+      result.app.onError(onError)
+      result.app.use('/test', async (c, next) => {
+        c.set('serverPermissions', userPerms)
+        await next()
+      })
+      result.app.get('/test', requirePermission(...requiredPerms), (c) => {
+        return c.json({ ok: true })
+      })
+      return result.app
+    }
+
+    it('should pass when user has wildcard "*" permission', async () => {
+      const app = buildPermApp(['*'])
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
 
     it('should pass with exact permission match', async () => {
-      const app = createApp([requirePermission('control.start')], {
-        serverPermissions: ['control.start', 'control.stop'],
-      });
+      const app = buildPermApp(['control.start', 'control.stop'])
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
+    it('should pass with prefix wildcard match (control.*)', async () => {
+      const app = buildMultiPermApp(['control.*'], ['control.start', 'control.stop'])
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
 
-    it('should pass with prefix match (e.g., "control.*")', async () => {
-      const app = createApp([requirePermission('control.*')], {
-        serverPermissions: ['control.start', 'control.stop'],
-      });
+    it('should reject when user lacks required permission (403)', async () => {
+      const app = buildPermApp(['file.read', 'file.write'])
+      const res = await app.request('/test')
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
-
-    it('should reject missing permission (403)', async () => {
-      const app = createApp([requirePermission('admin.delete')], {
-        serverPermissions: ['control.start', 'control.stop'],
-      });
-
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(403);
-      expect(res.body.errors[0].detail).toBe(
+      expect(res.status).toBe(403)
+      const body = await res.json()
+      expect(body.errors[0].detail).toBe(
         'You do not have permission to perform this action.',
-      );
-    });
+      )
+    })
 
-    it('should reject when no permissions are set', async () => {
-      const app = createApp([requirePermission('control.start')], {
-        serverPermissions: [],
-      });
-
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(403);
-    });
+    it('should reject when permissions array is empty (403)', async () => {
+      const app = buildPermApp([])
+      const res = await app.request('/test')
+      expect(res.status).toBe(403)
+    })
 
     it('should pass when any of multiple required permissions match', async () => {
-      const app = createApp([requirePermission('admin.delete', 'control.start')], {
-        serverPermissions: ['control.start'],
-      });
+      const app = buildMultiPermApp(
+        ['admin.delete', 'control.start'],
+        ['control.start'],
+      )
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
-
-    it('should handle no serverPermissions on request', async () => {
-      const app = createApp([requirePermission('control.start')]);
-
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(403);
-    });
-  });
+    it('should reject when serverPermissions is not set', async () => {
+      const result = createTestHono({ user: MOCK_USER })
+      result.app.onError(onError)
+      // No middleware sets serverPermissions
+      result.app.get('/test', requirePermission('control.start'), (c) => {
+        return c.json({ ok: true })
+      })
+      const res = await result.app.request('/test')
+      expect(res.status).toBe(403)
+    })
+  })
 
   describe('validateServerState', () => {
-    it('should pass for normal server', async () => {
-      const app = createApp([validateServerState], {
-        server: { id: 1, status: null, node: { maintenanceMode: false } },
-      });
+    function buildStateApp(server: any) {
+      const result = createTestHono({ user: MOCK_USER })
+      result.app.onError(onError)
+      result.app.use('/test', async (c, next) => {
+        if (server) c.set('server', server)
+        await next()
+      })
+      result.app.get('/test', validateServerState, (c) => {
+        return c.json({ ok: true })
+      })
+      return result.app
+    }
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
+    it('should pass for a normal server', async () => {
+      const app = buildStateApp({ id: 1, status: null, node: { maintenanceMode: false } })
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
 
     it('should reject suspended server (409)', async () => {
-      const app = createApp([validateServerState], {
-        server: { id: 1, status: 'suspended', node: { maintenanceMode: false } },
-      });
+      const app = buildStateApp({ id: 1, status: 'suspended', node: { maintenanceMode: false } })
+      const res = await app.request('/test')
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(409);
-      expect(res.body.errors[0].code).toBe('ServerStateConflictError');
-    });
+      expect(res.status).toBe(409)
+      const body = await res.json()
+      expect(body.errors[0].code).toBe('ServerStateConflictError')
+    })
 
     it('should reject server on node in maintenance (409)', async () => {
-      const app = createApp([validateServerState], {
-        server: { id: 1, status: null, node: { maintenanceMode: true } },
-      });
+      const app = buildStateApp({ id: 1, status: null, node: { maintenanceMode: true } })
+      const res = await app.request('/test')
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(409);
-      expect(res.body.errors[0].code).toBe('ServerStateConflictError');
-    });
+      expect(res.status).toBe(409)
+      const body = await res.json()
+      expect(body.errors[0].code).toBe('ServerStateConflictError')
+    })
 
     it('should reject server with restoring_backup status (409)', async () => {
-      const app = createApp([validateServerState], {
-        server: { id: 1, status: 'restoring_backup', node: { maintenanceMode: false } },
-      });
+      const app = buildStateApp({ id: 1, status: 'restoring_backup', node: { maintenanceMode: false } })
+      const res = await app.request('/test')
+      expect(res.status).toBe(409)
+    })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(409);
-    });
-
-    it('should reject when server is not set on request (404)', async () => {
-      const app = createApp([validateServerState]);
-
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(404);
-    });
+    it('should return 404 when server is not set on context', async () => {
+      const app = buildStateApp(null)
+      const res = await app.request('/test')
+      expect(res.status).toBe(404)
+    })
 
     it('should pass for server with running status', async () => {
-      const app = createApp([validateServerState], {
-        server: { id: 1, status: 'running', node: { maintenanceMode: false } },
-      });
+      const app = buildStateApp({ id: 1, status: 'running', node: { maintenanceMode: false } })
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
+  })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
-  });
-});
+  describe('no user context (unauthenticated)', () => {
+    it('should fail when no user is set and authenticateServerAccess reads user', async () => {
+      prisma.server.findFirst.mockResolvedValue(FAKE_SERVER)
+
+      const result = createTestHono({ prisma })
+      // No user injected
+      result.app.onError(onError)
+      result.app.get('/servers/:server', authenticateServerAccess, (c) => {
+        return c.json({ ok: true })
+      })
+
+      const res = await result.app.request('/servers/abc-123')
+      // Without a user, c.var.user! will be undefined, causing a runtime error
+      // which the error handler catches as a 500
+      expect(res.status).toBeGreaterThanOrEqual(400)
+    })
+  })
+})

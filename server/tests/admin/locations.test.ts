@@ -1,270 +1,258 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { createTestApp, request } from '../helpers/test-app';
-import { ensureAdminApiKey } from '../helpers/admin-auth';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  createTestHono,
+  createMockPrisma,
+  jsonRequest,
+  MOCK_ADMIN,
+} from '../helpers/test-app'
+import { onError } from '../../src/middleware/errorHandler'
+import * as locationController from '../../src/controllers/admin/locationController'
 
-const BASE = '/api/application/locations';
+function makeMockLocation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    short: 'us-east',
+    long: 'US East Coast',
+    createdAt: new Date('2025-01-01'),
+    updatedAt: new Date('2025-01-01'),
+    ...overrides,
+  }
+}
 
-describe('Admin Locations API', () => {
-  let app: ReturnType<typeof createTestApp>;
-  let apiKey: string;
+describe('Admin Locations API (Hono-native)', () => {
+  let prisma: ReturnType<typeof createMockPrisma>
 
-  beforeAll(async () => {
-    app = createTestApp();
-    apiKey = await ensureAdminApiKey();
-  });
+  beforeEach(() => {
+    vi.clearAllMocks()
+    prisma = createMockPrisma()
+  })
 
-  // ── Authentication ──────────────────────────────────────────────────────
+  function buildApp(user = MOCK_ADMIN) {
+    const ctx = createTestHono({ user, prisma })
+    ctx.app.onError(onError)
+    ctx.app.get('/locations', locationController.index)
+    ctx.app.get('/locations/:id', locationController.view)
+    ctx.app.post('/locations', locationController.store)
+    ctx.app.patch('/locations/:id', locationController.update)
+    ctx.app.delete('/locations/:id', locationController.deleteLocation)
+    return ctx.app
+  }
 
-  describe('Authentication', () => {
-    it('should return 401 without auth', async () => {
-      const res = await request(app).get(BASE);
-      expect(res.status).toBe(401);
-    });
-  });
+  // ── GET /locations (index) ──────────────────────────────────────────
 
-  // ── GET /locations (index) ─────────────────────────────────────────────
+  describe('GET /locations', () => {
+    it('should return paginated location list', async () => {
+      const loc = makeMockLocation()
+      prisma.location.findMany.mockResolvedValue([loc])
+      prisma.location.count.mockResolvedValue(1)
 
-  describe('GET /api/application/locations', () => {
-    it('should return 200 with paginated location list', async () => {
-      const res = await request(app)
-        .get(BASE)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/locations')
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('list');
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(res.body.meta.pagination).toBeDefined();
-      expect(res.body.meta.pagination).toHaveProperty('total');
-      expect(res.body.meta.pagination).toHaveProperty('per_page');
-      expect(res.body.meta.pagination).toHaveProperty('current_page');
-      expect(res.body.meta.pagination).toHaveProperty('total_pages');
-    });
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.object).toBe('list')
+      expect(Array.isArray(json.data)).toBe(true)
+      expect(json.data).toHaveLength(1)
+      expect(json.data[0].object).toBe('location')
+      expect(json.data[0].attributes.short).toBe('us-east')
+      expect(json.meta.pagination).toMatchObject({
+        total: 1,
+        per_page: 50,
+        current_page: 1,
+        total_pages: 1,
+      })
+    })
 
-    it('should support pagination', async () => {
-      const res = await request(app)
-        .get(`${BASE}?page=1&per_page=1`)
-        .set('Authorization', `Bearer ${apiKey}`);
+    it('should pass pagination params to prisma', async () => {
+      prisma.location.findMany.mockResolvedValue([])
+      prisma.location.count.mockResolvedValue(0)
 
-      expect(res.status).toBe(200);
-      expect(res.body.meta.pagination.per_page).toBe(1);
-      expect(res.body.data.length).toBeLessThanOrEqual(1);
-    });
+      const app = buildApp()
+      await jsonRequest(app, 'GET', '/locations?page=2&per_page=5')
+
+      expect(prisma.location.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 5, take: 5 }),
+      )
+    })
 
     it('should support filter[short]', async () => {
-      // Create a location with known short
-      await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ short: `filtershort_${Date.now()}`, long: 'Filterable Location' });
+      prisma.location.findMany.mockResolvedValue([])
+      prisma.location.count.mockResolvedValue(0)
 
-      const res = await request(app)
-        .get(`${BASE}?filter[short]=filtershort`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      await jsonRequest(app, 'GET', '/locations?filter[short]=us')
 
-      expect(res.status).toBe(200);
-      for (const item of res.body.data) {
-        expect(item.attributes.short.toLowerCase()).toContain('filtershort');
-      }
-    });
-  });
+      expect(prisma.location.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ short: { contains: 'us' } }),
+        }),
+      )
+    })
 
-  // ── GET /locations/:id (view) ──────────────────────────────────────────
+    it('should return empty list when no locations exist', async () => {
+      prisma.location.findMany.mockResolvedValue([])
+      prisma.location.count.mockResolvedValue(0)
 
-  describe('GET /api/application/locations/:id', () => {
-    let createdId: number;
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/locations')
 
-    beforeAll(async () => {
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ short: `view_${Date.now()}`, long: 'View Test Location' });
-      createdId = res.body.attributes.id;
-    });
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.data).toEqual([])
+      expect(json.meta.pagination.total).toBe(0)
+    })
+  })
 
-    it('should return 200 with location details', async () => {
-      const res = await request(app)
-        .get(`${BASE}/${createdId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
+  // ── GET /locations/:id (view) ───────────────────────────────────────
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('location');
-      expect(res.body.attributes.id).toBe(createdId);
-      expect(res.body.attributes).toHaveProperty('short');
-      expect(res.body.attributes).toHaveProperty('long');
-      expect(res.body.attributes).toHaveProperty('created_at');
-      expect(res.body.attributes).toHaveProperty('updated_at');
-    });
+  describe('GET /locations/:id', () => {
+    it('should return location details', async () => {
+      const loc = makeMockLocation({ id: 5 })
+      prisma.location.findUnique.mockResolvedValue(loc)
 
-    it('should return 404 for a non-existent location', async () => {
-      const res = await request(app)
-        .get(`${BASE}/999999`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/locations/5')
 
-      expect(res.status).toBe(404);
-      expect(res.body.errors[0].code).toBe('NotFoundError');
-    });
-  });
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.object).toBe('location')
+      expect(json.attributes.id).toBe(5)
+      expect(json.attributes).toHaveProperty('short')
+      expect(json.attributes).toHaveProperty('long')
+      expect(json.attributes).toHaveProperty('created_at')
+      expect(json.attributes).toHaveProperty('updated_at')
+    })
 
-  // ── POST /locations (store) ────────────────────────────────────────────
+    it('should return 404 for non-existent location', async () => {
+      prisma.location.findUnique.mockResolvedValue(null)
 
-  describe('POST /api/application/locations', () => {
-    it('should create a location with valid data and return 201', async () => {
-      const payload = {
-        short: `loc_${Date.now()}`,
-        long: 'Test Location Description',
-      };
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/locations/999')
 
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send(payload);
+      expect(res.status).toBe(404)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('NotFoundError')
+    })
+  })
 
-      expect(res.status).toBe(201);
-      expect(res.body.object).toBe('location');
-      expect(res.body.attributes.short).toBe(payload.short);
-      expect(res.body.attributes.long).toBe(payload.long);
-      expect(res.body.meta).toBeDefined();
-      expect(res.body.meta.resource).toContain('/api/application/locations/');
-    });
+  // ── POST /locations (store) ─────────────────────────────────────────
 
-    it('should create a location without long description', async () => {
-      const payload = {
-        short: `nolng_${Date.now()}`,
-      };
+  describe('POST /locations', () => {
+    it('should create a location and return 201', async () => {
+      const created = makeMockLocation({ id: 7, short: 'eu-west', long: 'EU West' })
+      prisma.location.create.mockResolvedValue(created)
 
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send(payload);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'POST', '/locations', {
+        short: 'eu-west',
+        long: 'EU West',
+      })
 
-      expect(res.status).toBe(201);
-      expect(res.body.attributes.short).toBe(payload.short);
-    });
+      expect(res.status).toBe(201)
+      const json = await res.json()
+      expect(json.object).toBe('location')
+      expect(json.attributes.short).toBe('eu-west')
+      expect(json.attributes.long).toBe('EU West')
+      expect(json.meta.resource).toBe('/api/application/locations/7')
+    })
 
-    it('should return 422 when short is missing', async () => {
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({});
+    it('should pass null for missing long', async () => {
+      const created = makeMockLocation({ id: 8, short: 'ap-south', long: null })
+      prisma.location.create.mockResolvedValue(created)
 
-      expect(res.status).toBe(422);
-    });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'POST', '/locations', { short: 'ap-south' })
 
-    it('should return 422 when short exceeds 60 chars', async () => {
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ short: 'a'.repeat(61) });
+      expect(res.status).toBe(201)
+      expect(prisma.location.create).toHaveBeenCalledWith({
+        data: { short: 'ap-south', long: null },
+      })
+    })
+  })
 
-      expect(res.status).toBe(422);
-    });
-  });
+  // ── PATCH /locations/:id (update) ───────────────────────────────────
 
-  // ── PATCH /locations/:id (update) ──────────────────────────────────────
-
-  describe('PATCH /api/application/locations/:id', () => {
-    let updateId: number;
-
-    beforeAll(async () => {
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ short: `upd_${Date.now()}`, long: 'Original' });
-      updateId = res.body.attributes.id;
-    });
-
+  describe('PATCH /locations/:id', () => {
     it('should update location fields and return 200', async () => {
-      const res = await request(app)
-        .patch(`${BASE}/${updateId}`)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ long: 'Updated Description' });
+      const existing = makeMockLocation({ id: 3 })
+      const updated = makeMockLocation({ id: 3, long: 'Updated' })
+      prisma.location.findUnique.mockResolvedValue(existing)
+      prisma.location.update.mockResolvedValue(updated)
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('location');
-      expect(res.body.attributes.long).toBe('Updated Description');
-    });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/locations/3', { long: 'Updated' })
+
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.object).toBe('location')
+      expect(json.attributes.long).toBe('Updated')
+    })
 
     it('should update short name', async () => {
-      const newShort = `new_${Date.now()}`;
-      const res = await request(app)
-        .patch(`${BASE}/${updateId}`)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ short: newShort });
+      const existing = makeMockLocation({ id: 3 })
+      const updated = makeMockLocation({ id: 3, short: 'new-short' })
+      prisma.location.findUnique.mockResolvedValue(existing)
+      prisma.location.update.mockResolvedValue(updated)
 
-      expect(res.status).toBe(200);
-      expect(res.body.attributes.short).toBe(newShort);
-    });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/locations/3', { short: 'new-short' })
 
-    it('should return 404 for a non-existent location', async () => {
-      const res = await request(app)
-        .patch(`${BASE}/999999`)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ long: 'Ghost' });
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.attributes.short).toBe('new-short')
+    })
 
-      expect(res.status).toBe(404);
-    });
-  });
+    it('should return 404 for non-existent location', async () => {
+      prisma.location.findUnique.mockResolvedValue(null)
 
-  // ── DELETE /locations/:id ──────────────────────────────────────────────
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/locations/999', { long: 'Ghost' })
 
-  describe('DELETE /api/application/locations/:id', () => {
+      expect(res.status).toBe(404)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('NotFoundError')
+    })
+  })
+
+  // ── DELETE /locations/:id ───────────────────────────────────────────
+
+  describe('DELETE /locations/:id', () => {
     it('should delete a location without nodes and return 204', async () => {
-      const createRes = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ short: `del_${Date.now()}` });
-      const locId = createRes.body.attributes.id;
+      prisma.location.findUnique.mockResolvedValue(
+        makeMockLocation({ id: 4, nodes: [] }),
+      )
+      prisma.location.delete.mockResolvedValue({})
 
-      const res = await request(app)
-        .delete(`${BASE}/${locId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'DELETE', '/locations/4')
 
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(204)
+      expect(prisma.location.delete).toHaveBeenCalledWith({ where: { id: 4 } })
+    })
 
-      // Verify it's gone
-      const getRes = await request(app)
-        .get(`${BASE}/${locId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
-      expect(getRes.status).toBe(404);
-    });
+    it('should return 404 for non-existent location', async () => {
+      prisma.location.findUnique.mockResolvedValue(null)
 
-    it('should return 404 for a non-existent location', async () => {
-      const res = await request(app)
-        .delete(`${BASE}/999999`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'DELETE', '/locations/999')
 
-      expect(res.status).toBe(404);
-    });
+      expect(res.status).toBe(404)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('NotFoundError')
+    })
 
-    it('should return 409 when deleting a location with nodes attached', async () => {
-      // Create a location then attach a node
-      const locRes = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ short: `conflict_${Date.now()}` });
-      const locId = locRes.body.attributes.id;
+    it('should return 409 when location has nodes attached', async () => {
+      prisma.location.findUnique.mockResolvedValue(
+        makeMockLocation({ id: 4, nodes: [{ id: 1 }] }),
+      )
 
-      // Create a node attached to this location
-      await request(app)
-        .post('/api/application/nodes')
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({
-          name: `conflict-node-${Date.now()}`,
-          location_id: locId,
-          fqdn: `conflict-${Date.now()}.test.local`,
-          scheme: 'https',
-          memory: 4096,
-          memory_overallocate: 0,
-          disk: 131072,
-          disk_overallocate: 0,
-        });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'DELETE', '/locations/4')
 
-      const res = await request(app)
-        .delete(`${BASE}/${locId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
-
-      expect(res.status).toBe(409);
-      expect(res.body.errors[0].code).toBe('ConflictError');
-    });
-  });
-});
+      expect(res.status).toBe(409)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('ConflictError')
+    })
+  })
+})

@@ -1,182 +1,240 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import type { TestAgent } from 'supertest';
-import crypto from 'crypto';
-import { createTestApp, createAuthenticatedAgent, request } from '../helpers/test-app';
+import { describe, it, expect, vi } from 'vitest'
+import {
+  createTestHono,
+  createMockPrisma,
+  jsonRequest,
+  MOCK_USER,
+} from '../helpers/test-app'
+import * as sshKeyController from '../../src/controllers/client/sshKeyController'
+import { onError } from '../../src/middleware/errorHandler'
 
-function generateTestSSHKey(seed?: string): string {
-  const data = crypto.randomBytes(32).toString('base64');
-  return `ssh-rsa ${data} test@pyrotype${seed ? `-${seed}` : ''}`;
+function buildApp(prisma?: ReturnType<typeof createMockPrisma>) {
+  const ctx = createTestHono({ user: MOCK_USER, prisma })
+  ctx.app.get('/account/ssh-keys', sshKeyController.index)
+  ctx.app.post('/account/ssh-keys', sshKeyController.store)
+  ctx.app.post('/account/ssh-keys/remove', sshKeyController.deleteSSHKey)
+  ctx.app.onError(onError)
+  return ctx
 }
 
+// A valid base64-encoded key body for fingerprint computation
+const validBase64Key = btoa(String.fromCharCode(...new Uint8Array(32)))
+const validPublicKey = `ssh-rsa ${validBase64Key} user@host`
+
+// ---------------------------------------------------------------------------
+// GET /account/ssh-keys
+// ---------------------------------------------------------------------------
+
 describe('Client SSH Key Endpoints', () => {
-  let app: ReturnType<typeof createTestApp>;
-  let agent: TestAgent;
+  describe('GET /account/ssh-keys', () => {
+    it('should return a list of SSH keys', async () => {
+      const prisma = createMockPrisma()
+      const mockSSHKey = {
+        id: 1,
+        name: 'My Laptop',
+        fingerprint: 'SHA256:abc123',
+        publicKey: 'ssh-ed25519 AAAA...',
+        createdAt: new Date('2025-01-01'),
+      }
+      prisma.userSSHKey.findMany.mockResolvedValue([mockSSHKey])
+      const { app } = buildApp(prisma)
 
-  beforeAll(async () => {
-    app = createTestApp();
-    const auth = await createAuthenticatedAgent();
-    agent = auth.agent;
-  });
+      const res = await app.request('/account/ssh-keys')
 
-  describe('GET /api/client/account/ssh-keys', () => {
-    it('should return 401 when unauthenticated', async () => {
-      const res = await request(app).get('/api/client/account/ssh-keys');
-      expect(res.status).toBe(401);
-    });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.object).toBe('list')
+      expect(body.data).toHaveLength(1)
+      expect(body.data[0].object).toBe('ssh_key')
+      expect(body.data[0].attributes.name).toBe('My Laptop')
+      expect(body.data[0].attributes.fingerprint).toBe('SHA256:abc123')
+      expect(body.data[0].attributes.public_key).toBe('ssh-ed25519 AAAA...')
+      expect(body.data[0].attributes.created_at).toBe('2025-01-01T00:00:00.000Z')
+    })
 
-    it('should return 200 with SSH key list', async () => {
-      const res = await agent.get('/api/client/account/ssh-keys');
+    it('should return an empty list when no keys exist', async () => {
+      const { app } = buildApp()
+      const res = await app.request('/account/ssh-keys')
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('list');
-      expect(Array.isArray(res.body.data)).toBe(true);
-    });
-  });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.object).toBe('list')
+      expect(body.data).toHaveLength(0)
+    })
 
-  describe('POST /api/client/account/ssh-keys', () => {
-    it('should return 401 when unauthenticated', async () => {
-      const res = await request(app)
-        .post('/api/client/account/ssh-keys')
-        .send({ name: 'test', public_key: generateTestSSHKey() });
-      expect(res.status).toBe(401);
-    });
+    it('should filter by userId and non-deleted keys', async () => {
+      const prisma = createMockPrisma()
+      prisma.userSSHKey.findMany.mockResolvedValue([])
+      const { app } = buildApp(prisma)
 
-    it('should create an SSH key with valid data', async () => {
-      const publicKey = generateTestSSHKey(Date.now().toString());
+      await app.request('/account/ssh-keys')
 
-      const res = await agent
-        .post('/api/client/account/ssh-keys')
-        .send({ name: 'Test SSH Key', public_key: publicKey });
+      expect(prisma.userSSHKey.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: MOCK_USER.id, deletedAt: null },
+        }),
+      )
+    })
+  })
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('ssh_key');
-      expect(res.body.attributes).toBeDefined();
-      expect(res.body.attributes.name).toBe('Test SSH Key');
-      expect(res.body.attributes).toHaveProperty('fingerprint');
-      expect(res.body.attributes.fingerprint).toMatch(/^SHA256:/);
-      expect(res.body.attributes).toHaveProperty('public_key');
-      expect(res.body.attributes).toHaveProperty('created_at');
-    });
+  // -------------------------------------------------------------------------
+  // POST /account/ssh-keys
+  // -------------------------------------------------------------------------
 
-    it('should reject when name is missing', async () => {
-      const res = await agent
-        .post('/api/client/account/ssh-keys')
-        .send({ public_key: generateTestSSHKey() });
+  describe('POST /account/ssh-keys', () => {
+    it('should create a new SSH key', async () => {
+      const prisma = createMockPrisma()
+      prisma.userSSHKey.findFirst.mockResolvedValue(null) // no duplicate
+      prisma.userSSHKey.create.mockResolvedValue({
+        id: 1,
+        name: 'Work Key',
+        fingerprint: 'SHA256:computed',
+        publicKey: validPublicKey,
+        createdAt: new Date('2025-01-01'),
+      })
+      const { app } = buildApp(prisma)
 
-      expect(res.status).toBe(422);
-    });
+      const res = await jsonRequest(app, 'POST', '/account/ssh-keys', {
+        name: 'Work Key',
+        public_key: validPublicKey,
+      })
 
-    it('should reject when public_key is missing', async () => {
-      const res = await agent
-        .post('/api/client/account/ssh-keys')
-        .send({ name: 'Key without public key' });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.object).toBe('ssh_key')
+      expect(body.attributes.name).toBe('Work Key')
+      expect(body.attributes.public_key).toBe(validPublicKey)
+    })
 
-      expect(res.status).toBe(422);
-    });
+    it('should return 422 when name is missing', async () => {
+      const { app } = buildApp()
 
-    it('should reject empty body', async () => {
-      const res = await agent
-        .post('/api/client/account/ssh-keys')
-        .send({});
+      const res = await jsonRequest(app, 'POST', '/account/ssh-keys', {
+        public_key: validPublicKey,
+      })
 
-      expect(res.status).toBe(422);
-    });
+      expect(res.status).toBe(422)
+    })
 
-    it('should reject duplicate SSH key fingerprint', async () => {
-      const publicKey = generateTestSSHKey('duplicate-test-' + Date.now());
+    it('should return 422 when public_key is missing', async () => {
+      const { app } = buildApp()
 
-      // Create first
-      const first = await agent
-        .post('/api/client/account/ssh-keys')
-        .send({ name: 'First Key', public_key: publicKey });
-      expect(first.status).toBe(200);
+      const res = await jsonRequest(app, 'POST', '/account/ssh-keys', {
+        name: 'Test',
+      })
 
-      // Try duplicate
-      const duplicate = await agent
-        .post('/api/client/account/ssh-keys')
-        .send({ name: 'Duplicate Key', public_key: publicKey });
+      expect(res.status).toBe(422)
+    })
 
-      expect(duplicate.status).toBe(422);
-    });
-  });
+    it('should return 422 when body is empty', async () => {
+      const { app } = buildApp()
 
-  describe('POST /api/client/account/ssh-keys/remove', () => {
-    it('should return 401 when unauthenticated', async () => {
-      const res = await request(app)
-        .post('/api/client/account/ssh-keys/remove')
-        .send({ fingerprint: 'SHA256:test' });
-      expect(res.status).toBe(401);
-    });
+      const res = await jsonRequest(app, 'POST', '/account/ssh-keys', {})
 
-    it('should soft-delete an existing SSH key', async () => {
-      const publicKey = generateTestSSHKey('delete-test-' + Date.now());
+      expect(res.status).toBe(422)
+    })
 
-      // Create a key
-      const createRes = await agent
-        .post('/api/client/account/ssh-keys')
-        .send({ name: 'Key To Delete', public_key: publicKey });
-      expect(createRes.status).toBe(200);
-      const fingerprint = createRes.body.attributes.fingerprint;
+    it('should return 422 for duplicate SSH key fingerprint', async () => {
+      const prisma = createMockPrisma()
+      prisma.userSSHKey.findFirst.mockResolvedValue({ id: 99 }) // existing key
+      const { app } = buildApp(prisma)
 
-      // Delete it
-      const deleteRes = await agent
-        .post('/api/client/account/ssh-keys/remove')
-        .send({ fingerprint });
+      const res = await jsonRequest(app, 'POST', '/account/ssh-keys', {
+        name: 'Duplicate Key',
+        public_key: validPublicKey,
+      })
 
-      expect(deleteRes.status).toBe(204);
+      expect(res.status).toBe(422)
+    })
 
-      // Verify it's gone from the list
-      const listRes = await agent.get('/api/client/account/ssh-keys');
-      const fingerprints = listRes.body.data.map((k: any) => k.attributes.fingerprint);
-      expect(fingerprints).not.toContain(fingerprint);
-    });
+    it('should store key data with correct userId', async () => {
+      const prisma = createMockPrisma()
+      prisma.userSSHKey.findFirst.mockResolvedValue(null)
+      prisma.userSSHKey.create.mockResolvedValue({
+        id: 1,
+        name: 'My Key',
+        fingerprint: 'SHA256:test',
+        publicKey: validPublicKey,
+        createdAt: new Date('2025-01-01'),
+      })
+      const { app } = buildApp(prisma)
 
-    it('should reject when fingerprint is missing', async () => {
-      const res = await agent
-        .post('/api/client/account/ssh-keys/remove')
-        .send({});
+      await jsonRequest(app, 'POST', '/account/ssh-keys', {
+        name: 'My Key',
+        public_key: validPublicKey,
+      })
 
-      expect(res.status).toBe(422);
-    });
+      expect(prisma.userSSHKey.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: MOCK_USER.id,
+          name: 'My Key',
+          publicKey: validPublicKey,
+          fingerprint: expect.stringMatching(/^SHA256:/),
+        }),
+      })
+    })
+  })
 
-    it('should return 204 for non-existent fingerprint (idempotent)', async () => {
-      const res = await agent
-        .post('/api/client/account/ssh-keys/remove')
-        .send({ fingerprint: 'SHA256:nonexistent-fingerprint' });
+  // -------------------------------------------------------------------------
+  // POST /account/ssh-keys/remove
+  // -------------------------------------------------------------------------
 
-      expect(res.status).toBe(204);
-    });
-  });
+  describe('POST /account/ssh-keys/remove', () => {
+    it('should soft-delete an existing SSH key and return 204', async () => {
+      const prisma = createMockPrisma()
+      prisma.userSSHKey.findFirst.mockResolvedValue({ id: 5 })
+      const { app } = buildApp(prisma)
 
-  describe('SSH key CRUD lifecycle', () => {
-    it('should support full create-list-delete cycle', async () => {
-      const publicKey = generateTestSSHKey('lifecycle-' + Date.now());
+      const res = await jsonRequest(app, 'POST', '/account/ssh-keys/remove', {
+        fingerprint: 'SHA256:abc',
+      })
 
-      // List initial keys
-      const initialRes = await agent.get('/api/client/account/ssh-keys');
-      expect(initialRes.status).toBe(200);
-      const initialCount = initialRes.body.data.length;
+      expect(res.status).toBe(204)
+      expect(prisma.userSSHKey.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 5 },
+          data: { deletedAt: expect.any(Date) },
+        }),
+      )
+    })
 
-      // Create
-      const createRes = await agent
-        .post('/api/client/account/ssh-keys')
-        .send({ name: 'Lifecycle Test', public_key: publicKey });
-      expect(createRes.status).toBe(200);
-      const fingerprint = createRes.body.attributes.fingerprint;
+    it('should return 204 even when the key is not found (idempotent)', async () => {
+      const prisma = createMockPrisma()
+      prisma.userSSHKey.findFirst.mockResolvedValue(null)
+      const { app } = buildApp(prisma)
 
-      // List should have one more
-      const afterCreateRes = await agent.get('/api/client/account/ssh-keys');
-      expect(afterCreateRes.body.data.length).toBe(initialCount + 1);
+      const res = await jsonRequest(app, 'POST', '/account/ssh-keys/remove', {
+        fingerprint: 'SHA256:missing',
+      })
 
-      // Delete
-      const deleteRes = await agent
-        .post('/api/client/account/ssh-keys/remove')
-        .send({ fingerprint });
-      expect(deleteRes.status).toBe(204);
+      expect(res.status).toBe(204)
+      expect(prisma.userSSHKey.update).not.toHaveBeenCalled()
+    })
 
-      // List should be back to initial count
-      const afterDeleteRes = await agent.get('/api/client/account/ssh-keys');
-      expect(afterDeleteRes.body.data.length).toBe(initialCount);
-    });
-  });
-});
+    it('should return 422 when fingerprint is missing', async () => {
+      const { app } = buildApp()
+
+      const res = await jsonRequest(app, 'POST', '/account/ssh-keys/remove', {})
+
+      expect(res.status).toBe(422)
+    })
+
+    it('should query by userId and non-deleted keys', async () => {
+      const prisma = createMockPrisma()
+      prisma.userSSHKey.findFirst.mockResolvedValue(null)
+      const { app } = buildApp(prisma)
+
+      await jsonRequest(app, 'POST', '/account/ssh-keys/remove', {
+        fingerprint: 'SHA256:test',
+      })
+
+      expect(prisma.userSSHKey.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: MOCK_USER.id,
+          fingerprint: 'SHA256:test',
+          deletedAt: null,
+        },
+      })
+    })
+  })
+})

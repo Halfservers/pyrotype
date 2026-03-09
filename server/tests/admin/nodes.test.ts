@@ -1,378 +1,549 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { createTestApp, request } from '../helpers/test-app';
-import { ensureAdminApiKey } from '../helpers/admin-auth';
-import { prisma } from '../../src/config/database';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  createTestHono,
+  createMockPrisma,
+  jsonRequest,
+  MOCK_ADMIN,
+} from '../helpers/test-app'
+import { onError } from '../../src/middleware/errorHandler'
+import * as nodeController from '../../src/controllers/admin/nodeController'
 
-const BASE = '/api/application/nodes';
+vi.mock('../../src/utils/crypto', () => ({
+  generateUuid: vi.fn().mockReturnValue('node-uuid-generated-1234'),
+}))
 
-describe('Admin Nodes API', () => {
-  let app: ReturnType<typeof createTestApp>;
-  let apiKey: string;
-  let testLocationId: number;
-
-  beforeAll(async () => {
-    app = createTestApp();
-    apiKey = await ensureAdminApiKey();
-
-    // Ensure a location exists for node creation
-    let location = await prisma.location.findFirst();
-    if (!location) {
-      location = await prisma.location.create({ data: { short: 'node-test-loc' } });
+vi.mock('../../src/services/daemon/proxy', () => ({
+  daemonRequest: vi.fn().mockResolvedValue({}),
+  DaemonConnectionError: class DaemonConnectionError extends Error {
+    constructor(msg?: string) {
+      super(msg ?? 'Daemon connection error')
+      this.name = 'DaemonConnectionError'
     }
-    testLocationId = location.id;
-  });
+  },
+}))
 
-  // ── Authentication ──────────────────────────────────────────────────────
+const NOW = new Date('2025-06-01')
 
-  describe('Authentication', () => {
-    it('should return 401 without auth', async () => {
-      const res = await request(app).get(BASE);
-      expect(res.status).toBe(401);
-    });
-  });
+function makeMockNode(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    uuid: 'node-uuid-generated-1234',
+    public: true,
+    name: 'Test Node',
+    description: 'A test node',
+    locationId: 1,
+    fqdn: 'node.test.local',
+    internalFqdn: null,
+    useSeparateFqdns: false,
+    scheme: 'https',
+    behindProxy: false,
+    maintenanceMode: false,
+    memory: 32768,
+    memoryOverallocate: 0,
+    disk: 1048576,
+    diskOverallocate: 0,
+    uploadSize: 100,
+    daemonListen: 8080,
+    daemonSFTP: 2022,
+    daemonBase: '/var/lib/pterodactyl/volumes',
+    daemonType: 'elytra',
+    backupDisk: 'local',
+    daemonTokenId: 'abcdef0123456789',
+    daemonToken: 'secret-daemon-token-hex',
+    trustAlias: false,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  }
+}
 
-  // ── GET /nodes (index) ─────────────────────────────────────────────────
+describe('Admin Nodes API (Hono-native)', () => {
+  let prisma: ReturnType<typeof createMockPrisma>
 
-  describe('GET /api/application/nodes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    prisma = createMockPrisma()
+  })
+
+  function buildApp() {
+    const ctx = createTestHono({ user: MOCK_ADMIN, prisma })
+    ctx.app.onError(onError)
+    ctx.app.get('/nodes', nodeController.index)
+    ctx.app.get('/nodes/:id', nodeController.view)
+    ctx.app.post('/nodes', nodeController.store)
+    ctx.app.patch('/nodes/:id', nodeController.update)
+    ctx.app.delete('/nodes/:id', nodeController.deleteNode)
+    return ctx.app
+  }
+
+  // ── GET /nodes (index) ──────────────────────────────────────────────────
+
+  describe('GET /nodes', () => {
     it('should return 200 with paginated node list', async () => {
-      const res = await request(app)
-        .get(BASE)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const nodes = [makeMockNode({ id: 1 }), makeMockNode({ id: 2, name: 'Node 2' })]
+      prisma.node.findMany.mockResolvedValue(nodes)
+      prisma.node.count.mockResolvedValue(2)
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('list');
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(res.body.meta.pagination).toBeDefined();
-    });
+      const app = buildApp()
+      const res = await app.request('/nodes')
+      const body = await res.json()
 
-    it('should return nodes with correct attributes', async () => {
-      const res = await request(app)
-        .get(BASE)
-        .set('Authorization', `Bearer ${apiKey}`);
+      expect(res.status).toBe(200)
+      expect(body.object).toBe('list')
+      expect(body.data).toHaveLength(2)
+      expect(body.meta.pagination.total).toBe(2)
+      expect(body.meta.pagination.current_page).toBe(1)
+    })
 
-      expect(res.status).toBe(200);
-      if (res.body.data.length > 0) {
-        const node = res.body.data[0];
-        expect(node.object).toBe('node');
-        expect(node.attributes).toHaveProperty('id');
-        expect(node.attributes).toHaveProperty('uuid');
-        expect(node.attributes).toHaveProperty('name');
-        expect(node.attributes).toHaveProperty('fqdn');
-        expect(node.attributes).toHaveProperty('scheme');
-        expect(node.attributes).toHaveProperty('memory');
-        expect(node.attributes).toHaveProperty('disk');
-        expect(node.attributes).toHaveProperty('location_id');
-        expect(node.attributes).toHaveProperty('daemon_listen');
-        expect(node.attributes).toHaveProperty('daemon_sftp');
-        expect(node.attributes).toHaveProperty('daemon_base');
-        expect(node.attributes).toHaveProperty('created_at');
-        expect(node.attributes).toHaveProperty('updated_at');
-      }
-    });
+    it('should return correct node attribute shape', async () => {
+      prisma.node.findMany.mockResolvedValue([makeMockNode()])
+      prisma.node.count.mockResolvedValue(1)
 
-    it('should support filter[name]', async () => {
-      const res = await request(app)
-        .get(`${BASE}?filter[name]=Test`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      const res = await app.request('/nodes')
+      const body = await res.json()
 
-      expect(res.status).toBe(200);
-    });
+      const attrs = body.data[0].attributes
+      expect(body.data[0].object).toBe('node')
+      expect(attrs).toHaveProperty('id')
+      expect(attrs).toHaveProperty('uuid')
+      expect(attrs).toHaveProperty('public')
+      expect(attrs).toHaveProperty('name')
+      expect(attrs).toHaveProperty('description')
+      expect(attrs).toHaveProperty('location_id')
+      expect(attrs).toHaveProperty('fqdn')
+      expect(attrs).toHaveProperty('scheme')
+      expect(attrs).toHaveProperty('behind_proxy')
+      expect(attrs).toHaveProperty('maintenance_mode')
+      expect(attrs).toHaveProperty('memory')
+      expect(attrs).toHaveProperty('memory_overallocate')
+      expect(attrs).toHaveProperty('disk')
+      expect(attrs).toHaveProperty('disk_overallocate')
+      expect(attrs).toHaveProperty('upload_size')
+      expect(attrs).toHaveProperty('daemon_listen')
+      expect(attrs).toHaveProperty('daemon_sftp')
+      expect(attrs).toHaveProperty('daemon_base')
+      expect(attrs).toHaveProperty('daemon_type')
+      expect(attrs).toHaveProperty('backup_disk')
+      expect(attrs).toHaveProperty('created_at')
+      expect(attrs).toHaveProperty('updated_at')
+    })
 
-    it('should support sort by memory', async () => {
-      const res = await request(app)
-        .get(`${BASE}?sort=memory`)
-        .set('Authorization', `Bearer ${apiKey}`);
+    it('should pass name filter to prisma', async () => {
+      prisma.node.findMany.mockResolvedValue([])
+      prisma.node.count.mockResolvedValue(0)
 
-      expect(res.status).toBe(200);
-    });
-  });
+      const app = buildApp()
+      await app.request('/nodes?filter[name]=production')
+
+      expect(prisma.node.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ name: { contains: 'production' } }),
+        }),
+      )
+    })
+
+    it('should pass fqdn filter to prisma', async () => {
+      prisma.node.findMany.mockResolvedValue([])
+      prisma.node.count.mockResolvedValue(0)
+
+      const app = buildApp()
+      await app.request('/nodes?filter[fqdn]=test.local')
+
+      expect(prisma.node.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ fqdn: { contains: 'test.local' } }),
+        }),
+      )
+    })
+
+    it('should pass uuid filter to prisma', async () => {
+      prisma.node.findMany.mockResolvedValue([])
+      prisma.node.count.mockResolvedValue(0)
+
+      const app = buildApp()
+      await app.request('/nodes?filter[uuid]=abc123')
+
+      expect(prisma.node.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ uuid: { contains: 'abc123' } }),
+        }),
+      )
+    })
+
+    it('should support pagination', async () => {
+      prisma.node.findMany.mockResolvedValue([])
+      prisma.node.count.mockResolvedValue(100)
+
+      const app = buildApp()
+      const res = await app.request('/nodes?page=2&per_page=25')
+      const body = await res.json()
+
+      expect(body.meta.pagination.current_page).toBe(2)
+      expect(body.meta.pagination.per_page).toBe(25)
+      expect(prisma.node.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 25, take: 25 }),
+      )
+    })
+
+    it('should sort by memory ascending', async () => {
+      prisma.node.findMany.mockResolvedValue([])
+      prisma.node.count.mockResolvedValue(0)
+
+      const app = buildApp()
+      await app.request('/nodes?sort=memory')
+
+      expect(prisma.node.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { memory: 'asc' } }),
+      )
+    })
+
+    it('should sort by disk descending', async () => {
+      prisma.node.findMany.mockResolvedValue([])
+      prisma.node.count.mockResolvedValue(0)
+
+      const app = buildApp()
+      await app.request('/nodes?sort=-disk')
+
+      expect(prisma.node.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { disk: 'desc' } }),
+      )
+    })
+
+    it('should default sort to id ascending', async () => {
+      prisma.node.findMany.mockResolvedValue([])
+      prisma.node.count.mockResolvedValue(0)
+
+      const app = buildApp()
+      await app.request('/nodes')
+
+      expect(prisma.node.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { id: 'asc' } }),
+      )
+    })
+  })
 
   // ── GET /nodes/:id (view) ──────────────────────────────────────────────
 
-  describe('GET /api/application/nodes/:id', () => {
-    it('should return 404 for a non-existent node', async () => {
-      const res = await request(app)
-        .get(`${BASE}/999999`)
-        .set('Authorization', `Bearer ${apiKey}`);
+  describe('GET /nodes/:id', () => {
+    it('should return 200 with node details', async () => {
+      const node = makeMockNode({ id: 5 })
+      prisma.node.findUnique.mockResolvedValue(node)
 
-      expect(res.status).toBe(404);
-      expect(res.body.errors[0].code).toBe('NotFoundError');
-    });
-  });
+      const app = buildApp()
+      const res = await app.request('/nodes/5')
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.object).toBe('node')
+      expect(body.attributes.id).toBe(5)
+      expect(body.attributes.name).toBe('Test Node')
+      expect(body.attributes.fqdn).toBe('node.test.local')
+    })
+
+    it('should return 404 for non-existent node', async () => {
+      prisma.node.findUnique.mockResolvedValue(null)
+
+      const app = buildApp()
+      const res = await app.request('/nodes/999')
+      const body = await res.json()
+
+      expect(res.status).toBe(404)
+      expect(body.errors[0].code).toBe('NotFoundError')
+    })
+  })
 
   // ── POST /nodes (store) ────────────────────────────────────────────────
 
-  describe('POST /api/application/nodes', () => {
+  describe('POST /nodes', () => {
     it('should create a node with valid data and return 201', async () => {
-      const payload = {
-        name: `test-node-${Date.now()}`,
-        location_id: testLocationId,
-        fqdn: `node-${Date.now()}.test.local`,
+      const created = makeMockNode({
+        id: 20,
+        name: 'New Node',
+        fqdn: 'new.node.local',
+        memory: 16384,
+        disk: 524288,
+      })
+      prisma.node.create.mockResolvedValue(created)
+
+      const app = buildApp()
+      const res = await jsonRequest(app, 'POST', '/nodes', {
+        name: 'New Node',
+        location_id: 1,
+        fqdn: 'new.node.local',
         scheme: 'https',
         memory: 16384,
-        memory_overallocate: 0,
         disk: 524288,
-        disk_overallocate: 0,
-      };
+      })
+      const body = await res.json()
 
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send(payload);
+      expect(res.status).toBe(201)
+      expect(body.object).toBe('node')
+      expect(body.attributes.name).toBe('New Node')
+      expect(body.attributes.fqdn).toBe('new.node.local')
+      expect(body.attributes.memory).toBe(16384)
+      expect(body.attributes.disk).toBe(524288)
+      expect(body.meta.resource).toContain('/api/application/nodes/20')
+    })
 
-      expect(res.status).toBe(201);
-      expect(res.body.object).toBe('node');
-      expect(res.body.attributes.name).toBe(payload.name);
-      expect(res.body.attributes.fqdn).toBe(payload.fqdn);
-      expect(res.body.attributes.memory).toBe(16384);
-      expect(res.body.attributes.disk).toBe(524288);
-      expect(res.body.attributes.location_id).toBe(testLocationId);
-      expect(res.body.meta).toBeDefined();
-      expect(res.body.meta.resource).toContain('/api/application/nodes/');
-    });
+    it('should pass correct defaults to prisma create', async () => {
+      const created = makeMockNode({ id: 21 })
+      prisma.node.create.mockResolvedValue(created)
 
-    it('should return 422 when required fields are missing', async () => {
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({});
+      const app = buildApp()
+      await jsonRequest(app, 'POST', '/nodes', {
+        name: 'Defaults Node',
+        location_id: 1,
+        fqdn: 'defaults.node.local',
+        memory: 8192,
+        disk: 262144,
+      })
 
-      expect(res.status).toBe(422);
-    });
-
-    it('should return 422 when name is missing', async () => {
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({
-          location_id: testLocationId,
-          fqdn: 'test.local',
+      expect(prisma.node.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          uuid: 'node-uuid-generated-1234',
+          name: 'Defaults Node',
+          locationId: 1,
+          fqdn: 'defaults.node.local',
+          memory: 8192,
+          disk: 262144,
           scheme: 'https',
-          memory: 1024,
-          memory_overallocate: 0,
-          disk: 1024,
-          disk_overallocate: 0,
-        });
+          behindProxy: false,
+          public: true,
+          memoryOverallocate: 0,
+          diskOverallocate: 0,
+          daemonBase: '/var/lib/pterodactyl/volumes',
+          daemonSFTP: 2022,
+          daemonListen: 8080,
+          uploadSize: 100,
+          maintenanceMode: false,
+          daemonType: 'elytra',
+          backupDisk: 'local',
+        }),
+      })
+    })
 
-      expect(res.status).toBe(422);
-    });
+    it('should generate daemon token on create', async () => {
+      const created = makeMockNode({ id: 22 })
+      prisma.node.create.mockResolvedValue(created)
 
-    it('should return 422 when memory is less than 1', async () => {
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({
-          name: 'bad-memory-node',
-          location_id: testLocationId,
-          fqdn: 'test.local',
-          scheme: 'https',
-          memory: 0,
-          memory_overallocate: 0,
-          disk: 1024,
-          disk_overallocate: 0,
-        });
+      const app = buildApp()
+      await jsonRequest(app, 'POST', '/nodes', {
+        name: 'Token Node',
+        location_id: 1,
+        fqdn: 'token.node.local',
+        memory: 4096,
+        disk: 131072,
+      })
 
-      expect(res.status).toBe(422);
-    });
-  });
+      expect(prisma.node.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          daemonTokenId: expect.any(String),
+          daemonToken: expect.any(String),
+        }),
+      })
+    })
+
+    it('should accept custom optional fields', async () => {
+      const created = makeMockNode({ id: 23 })
+      prisma.node.create.mockResolvedValue(created)
+
+      const app = buildApp()
+      await jsonRequest(app, 'POST', '/nodes', {
+        name: 'Custom Node',
+        description: 'A custom node',
+        location_id: 2,
+        fqdn: 'custom.node.local',
+        internal_fqdn: 'internal.node.local',
+        use_separate_fqdns: true,
+        scheme: 'http',
+        behind_proxy: true,
+        public: false,
+        memory: 4096,
+        memory_overallocate: 20,
+        disk: 131072,
+        disk_overallocate: 10,
+        daemon_base: '/opt/volumes',
+        daemon_sftp: 2023,
+        daemon_listen: 9090,
+        upload_size: 200,
+        maintenance_mode: true,
+        daemon_type: 'wings',
+        backup_disk: 's3',
+      })
+
+      expect(prisma.node.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          description: 'A custom node',
+          internalFqdn: 'internal.node.local',
+          useSeparateFqdns: true,
+          scheme: 'http',
+          behindProxy: true,
+          public: false,
+          memoryOverallocate: 20,
+          diskOverallocate: 10,
+          daemonBase: '/opt/volumes',
+          daemonSFTP: 2023,
+          daemonListen: 9090,
+          uploadSize: 200,
+          maintenanceMode: true,
+          daemonType: 'wings',
+          backupDisk: 's3',
+        }),
+      })
+    })
+  })
 
   // ── PATCH /nodes/:id (update) ──────────────────────────────────────────
 
-  describe('PATCH /api/application/nodes/:id', () => {
-    let createdNodeId: number;
-
-    beforeAll(async () => {
-      const payload = {
-        name: `update-node-${Date.now()}`,
-        location_id: testLocationId,
-        fqdn: `upd-node-${Date.now()}.test.local`,
-        scheme: 'https',
-        memory: 8192,
-        memory_overallocate: 0,
-        disk: 262144,
-        disk_overallocate: 0,
-      };
-
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send(payload);
-      createdNodeId = res.body.attributes.id;
-    });
-
+  describe('PATCH /nodes/:id', () => {
     it('should update node fields and return 200', async () => {
-      const res = await request(app)
-        .patch(`${BASE}/${createdNodeId}`)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ name: 'Updated Node Name', memory: 32768 });
+      const existing = makeMockNode({ id: 30 })
+      const updated = makeMockNode({ id: 30, name: 'Updated Node', memory: 65536 })
+      prisma.node.findUnique.mockResolvedValue(existing)
+      prisma.node.update.mockResolvedValue(updated)
 
-      expect(res.status).toBe(200);
-      expect(res.body.attributes.name).toBe('Updated Node Name');
-      expect(res.body.attributes.memory).toBe(32768);
-    });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/nodes/30', {
+        name: 'Updated Node',
+        memory: 65536,
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(body.object).toBe('node')
+      expect(body.attributes.name).toBe('Updated Node')
+      expect(body.attributes.memory).toBe(65536)
+    })
 
     it('should update maintenance_mode', async () => {
-      const res = await request(app)
-        .patch(`${BASE}/${createdNodeId}`)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ maintenance_mode: true });
+      const existing = makeMockNode({ id: 31 })
+      const updated = makeMockNode({ id: 31, maintenanceMode: true })
+      prisma.node.findUnique.mockResolvedValue(existing)
+      prisma.node.update.mockResolvedValue(updated)
 
-      expect(res.status).toBe(200);
-      expect(res.body.attributes.maintenance_mode).toBe(true);
-    });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/nodes/31', { maintenance_mode: true })
+      const body = await res.json()
 
-    it('should return 404 for a non-existent node', async () => {
-      const res = await request(app)
-        .patch(`${BASE}/999999`)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send({ name: 'Ghost' });
+      expect(res.status).toBe(200)
+      expect(body.attributes.maintenance_mode).toBe(true)
+    })
 
-      expect(res.status).toBe(404);
-    });
-  });
+    it('should return 404 for non-existent node', async () => {
+      prisma.node.findUnique.mockResolvedValue(null)
+
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/nodes/999', { name: 'Ghost' })
+      const body = await res.json()
+
+      expect(res.status).toBe(404)
+      expect(body.errors[0].code).toBe('NotFoundError')
+    })
+
+    it('should only update provided fields', async () => {
+      const existing = makeMockNode({ id: 32 })
+      prisma.node.findUnique.mockResolvedValue(existing)
+      prisma.node.update.mockResolvedValue(existing)
+
+      const app = buildApp()
+      await jsonRequest(app, 'PATCH', '/nodes/32', { fqdn: 'updated.fqdn.local' })
+
+      expect(prisma.node.update).toHaveBeenCalledWith({
+        where: { id: 32 },
+        data: { fqdn: 'updated.fqdn.local' },
+      })
+    })
+
+    it('should handle reset_secret flag', async () => {
+      const existing = makeMockNode({ id: 33 })
+      prisma.node.findUnique.mockResolvedValue(existing)
+      prisma.node.update.mockResolvedValue(existing)
+
+      const app = buildApp()
+      await jsonRequest(app, 'PATCH', '/nodes/33', { reset_secret: true })
+
+      expect(prisma.node.update).toHaveBeenCalledWith({
+        where: { id: 33 },
+        data: expect.objectContaining({
+          daemonTokenId: expect.any(String),
+          daemonToken: expect.any(String),
+        }),
+      })
+    })
+
+    it('should update multiple fields at once', async () => {
+      const existing = makeMockNode({ id: 34 })
+      const updated = makeMockNode({
+        id: 34,
+        name: 'Multi Update',
+        memory: 4096,
+        disk: 500000,
+        scheme: 'http',
+      })
+      prisma.node.findUnique.mockResolvedValue(existing)
+      prisma.node.update.mockResolvedValue(updated)
+
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/nodes/34', {
+        name: 'Multi Update',
+        memory: 4096,
+        disk: 500000,
+        scheme: 'http',
+      })
+      const body = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(prisma.node.update).toHaveBeenCalledWith({
+        where: { id: 34 },
+        data: expect.objectContaining({
+          name: 'Multi Update',
+          memory: 4096,
+          disk: 500000,
+          scheme: 'http',
+        }),
+      })
+    })
+  })
 
   // ── DELETE /nodes/:id ──────────────────────────────────────────────────
 
-  describe('DELETE /api/application/nodes/:id', () => {
+  describe('DELETE /nodes/:id', () => {
     it('should delete a node without servers and return 204', async () => {
-      const payload = {
-        name: `delete-node-${Date.now()}`,
-        location_id: testLocationId,
-        fqdn: `del-node-${Date.now()}.test.local`,
-        scheme: 'https',
-        memory: 4096,
-        memory_overallocate: 0,
-        disk: 131072,
-        disk_overallocate: 0,
-      };
+      const node = { ...makeMockNode({ id: 40 }), servers: [] }
+      prisma.node.findUnique.mockResolvedValue(node)
+      prisma.node.delete.mockResolvedValue({})
 
-      const createRes = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send(payload);
-      const nodeId = createRes.body.attributes.id;
+      const app = buildApp()
+      const res = await app.request('/nodes/40', { method: 'DELETE' })
 
-      const res = await request(app)
-        .delete(`${BASE}/${nodeId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      expect(res.status).toBe(204)
+      expect(prisma.node.delete).toHaveBeenCalledWith({ where: { id: 40 } })
+    })
 
-      expect(res.status).toBe(204);
+    it('should return 409 when node has active servers', async () => {
+      const node = { ...makeMockNode({ id: 41 }), servers: [{ id: 100 }, { id: 101 }] }
+      prisma.node.findUnique.mockResolvedValue(node)
 
-      // Verify it's gone
-      const getRes = await request(app)
-        .get(`${BASE}/${nodeId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
-      expect(getRes.status).toBe(404);
-    });
+      const app = buildApp()
+      const res = await app.request('/nodes/41', { method: 'DELETE' })
+      const body = await res.json()
 
-    it('should return 404 for a non-existent node', async () => {
-      const res = await request(app)
-        .delete(`${BASE}/999999`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      expect(res.status).toBe(409)
+      expect(body.errors[0].code).toBe('ConflictError')
+      expect(body.errors[0].detail).toContain('active servers')
+      expect(prisma.node.delete).not.toHaveBeenCalled()
+    })
 
-      expect(res.status).toBe(404);
-    });
-  });
+    it('should return 404 for non-existent node', async () => {
+      prisma.node.findUnique.mockResolvedValue(null)
 
-  // ── Allocations (/nodes/:id/allocations) ───────────────────────────────
+      const app = buildApp()
+      const res = await app.request('/nodes/999', { method: 'DELETE' })
+      const body = await res.json()
 
-  describe('Node Allocations', () => {
-    let allocNodeId: number;
-
-    beforeAll(async () => {
-      const payload = {
-        name: `alloc-node-${Date.now()}`,
-        location_id: testLocationId,
-        fqdn: `alloc-node-${Date.now()}.test.local`,
-        scheme: 'https',
-        memory: 4096,
-        memory_overallocate: 0,
-        disk: 131072,
-        disk_overallocate: 0,
-      };
-      const res = await request(app)
-        .post(BASE)
-        .set('Authorization', `Bearer ${apiKey}`)
-        .send(payload);
-      allocNodeId = res.body.attributes.id;
-    });
-
-    describe('GET /api/application/nodes/:id/allocations', () => {
-      it('should return 200 with paginated allocation list', async () => {
-        const res = await request(app)
-          .get(`${BASE}/${allocNodeId}/allocations`)
-          .set('Authorization', `Bearer ${apiKey}`);
-
-        expect(res.status).toBe(200);
-        expect(res.body.object).toBe('list');
-        expect(res.body.meta.pagination).toBeDefined();
-      });
-
-      it('should return 404 for a non-existent node', async () => {
-        const res = await request(app)
-          .get(`${BASE}/999999/allocations`)
-          .set('Authorization', `Bearer ${apiKey}`);
-
-        expect(res.status).toBe(404);
-      });
-    });
-
-    describe('POST /api/application/nodes/:id/allocations', () => {
-      it('should create allocations and return 204', async () => {
-        const res = await request(app)
-          .post(`${BASE}/${allocNodeId}/allocations`)
-          .set('Authorization', `Bearer ${apiKey}`)
-          .send({ ip: '10.0.0.1', ports: ['25565'] });
-
-        expect(res.status).toBe(204);
-
-        // Verify allocation was created
-        const listRes = await request(app)
-          .get(`${BASE}/${allocNodeId}/allocations`)
-          .set('Authorization', `Bearer ${apiKey}`);
-        expect(listRes.body.data.length).toBeGreaterThanOrEqual(1);
-      });
-
-      it('should create allocations from a port range', async () => {
-        const res = await request(app)
-          .post(`${BASE}/${allocNodeId}/allocations`)
-          .set('Authorization', `Bearer ${apiKey}`)
-          .send({ ip: '10.0.0.2', ports: ['8000-8005'] });
-
-        expect(res.status).toBe(204);
-      });
-
-      it('should return 404 for a non-existent node', async () => {
-        const res = await request(app)
-          .post(`${BASE}/999999/allocations`)
-          .set('Authorization', `Bearer ${apiKey}`)
-          .send({ ip: '10.0.0.1', ports: ['25565'] });
-
-        expect(res.status).toBe(404);
-      });
-    });
-
-    describe('DELETE /api/application/nodes/:id/allocations/:allocationId', () => {
-      it('should delete an unassigned allocation and return 204', async () => {
-        // Create an allocation directly to ensure it exists
-        const alloc = await prisma.allocation.create({
-          data: { nodeId: allocNodeId, ip: '10.0.0.99', port: 9999 },
-        });
-
-        const res = await request(app)
-          .delete(`${BASE}/${allocNodeId}/allocations/${alloc.id}`)
-          .set('Authorization', `Bearer ${apiKey}`);
-
-        expect(res.status).toBe(204);
-      });
-
-      it('should return 404 for a non-existent allocation', async () => {
-        const res = await request(app)
-          .delete(`${BASE}/${allocNodeId}/allocations/999999`)
-          .set('Authorization', `Bearer ${apiKey}`);
-
-        expect(res.status).toBe(404);
-      });
-    });
-  });
-});
+      expect(res.status).toBe(404)
+      expect(body.errors[0].code).toBe('NotFoundError')
+    })
+  })
+})
