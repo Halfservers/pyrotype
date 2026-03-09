@@ -12,3 +12,6 @@ dist-ssr
 __unconfig*
 todos.json
 server/src/generated/prisma
+
+# Wrangler config (contains secrets)
+wrangler.toml

@@ -5,9 +5,11 @@
 # This is the UNIFIED deployment config for the full-stack Pyrotype app.
 # The server-side Hono worker lives under server/src/index.ts.
 #
-# SETUP: Before deploying, replace ALL placeholder IDs below:
-#   1. D1 database_id  — run: wrangler d1 create pyrotype-db
-#   2. KV namespace id — run: wrangler kv namespace create SESSION_KV
+# SETUP: Before deploying, copy this file to wrangler.toml and replace
+# ALL placeholder IDs below:
+#   1. account_id   — from your Cloudflare dashboard
+#   2. D1 database_id  — run: wrangler d1 create pyrotype-db
+#   3. KV namespace id — run: wrangler kv namespace create SESSION_KV
 #
 # ============================================================================
 
@@ -16,7 +18,7 @@ name = "pyrotype"
 main = "src/server.ts"
 compatibility_date = "2025-09-02"
 compatibility_flags = ["nodejs_compat"]
-account_id = "48d360a07bceff93b857ed6f95e9e95e"
+account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 workers_dev = true
 find_additional_modules = true
 
@@ -28,7 +30,7 @@ find_additional_modules = true
 [[d1_databases]]
 binding = "DB"
 database_name = "pyrotype-db"
-database_id = "03c2833d-d532-4206-b45e-961934c913ef"
+database_id = "YOUR_D1_DATABASE_ID"
 
 # ---------------------------------------------------------------------------
 # KV Namespace — session storage
@@ -37,7 +39,7 @@ database_id = "03c2833d-d532-4206-b45e-961934c913ef"
 #   wrangler kv namespace create SESSION_KV
 [[kv_namespaces]]
 binding = "SESSION_KV"
-id = "44e2009e282047ef8ac2bb2f19b5e69f"
+id = "YOUR_KV_NAMESPACE_ID"
 
 # ---------------------------------------------------------------------------
 # Queue — background job processing
@@ -63,11 +65,11 @@ tag = "v1"
 new_sqlite_classes = ["ServerConsole"]
 
 # ---------------------------------------------------------------------------
-# Custom domain
+# Custom domain (optional)
 # ---------------------------------------------------------------------------
-[[routes]]
-pattern = "pyrotype.dracobyte.pro/*"
-zone_name = "dracobyte.pro"
+# [[routes]]
+# pattern = "your-domain.com/*"
+# zone_name = "your-domain.com"
 
 # ---------------------------------------------------------------------------
 # Environment variables

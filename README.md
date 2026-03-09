@@ -1,8 +1,8 @@
 # Pyrotype
 
-A modern game server management panel built from the ground up as a clean-room rewrite of [Pyrodactyl](https://github.com/pyrodactyl-io/panel) (Pterodactyl fork).
+A modern game server management panel built as a clean-room rewrite of [Pyrodactyl](https://github.com/pyrodactyl-io/panel) (Pterodactyl fork). Runs entirely on Cloudflare Workers — no VPS required.
 
-Pyrotype replaces the original PHP/Laravel monolith with a standalone React frontend and Express API, delivering a leaner codebase (25% fewer lines, 23% fewer dependencies) with full TypeScript strict mode, modern tooling, and a polished UI powered by shadcn/ui.
+Pyrotype replaces the original PHP/Laravel monolith with a full-stack TypeScript application: React frontend with SSR and a Hono API backend, all deployed as a single Cloudflare Worker.
 
 ## Tech Stack
 
@@ -10,25 +10,29 @@ Pyrotype replaces the original PHP/Laravel monolith with a standalone React fron
 - **Framework**: [TanStack Start](https://tanstack.com/start) + React 19 + Vite 7
 - **Routing**: TanStack Router (file-based, fully type-safe)
 - **State**: Zustand 5 (global) + React Context (per-server)
-- **Forms**: React Hook Form + Zod validation
-- **UI**: [shadcn/ui](https://ui.shadcn.com) (28 components) + Tailwind CSS 4
+- **Forms**: TanStack Form + Zod validation
+- **UI**: [shadcn/ui](https://ui.shadcn.com) + Tailwind CSS 4
 - **Terminal**: xterm.js 6 with fit, search, and web-links addons
 - **Editor**: CodeMirror 6
 - **Charts**: Chart.js + react-chartjs-2
 
 ### Backend
-- **Runtime**: Node.js + Express 5
-- **ORM**: Prisma 7 with SQLite (via `@prisma/adapter-better-sqlite3`)
-- **Auth**: Express sessions + bcrypt + TOTP 2FA
-- **Queue**: BullMQ + Redis (ioredis)
-- **Tests**: Vitest 4 + Supertest (425 tests across 29 files)
+- **Runtime**: Cloudflare Workers
+- **API**: [Hono](https://hono.dev) v4
+- **ORM**: Prisma 6 with D1 adapter
+- **Database**: Cloudflare D1 (SQLite at the edge)
+- **Sessions**: Cloudflare KV
+- **Queue**: Cloudflare Queues (background job processing)
+- **WebSockets**: Durable Objects (server console proxy)
+- **Auth**: bcrypt + TOTP 2FA
+- **Tests**: Vitest (534 tests across 32 files)
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js 20+
-- pnpm (recommended) or npm
-- Redis (for queue/session backend)
+- Node.js 22+
+- pnpm 10+
+- A [Cloudflare](https://dash.cloudflare.com) account
 
 ### Installation
 
@@ -39,35 +43,67 @@ pnpm install
 
 cd server
 pnpm install
-cp .env.example .env    # configure DATABASE_URL, SESSION_SECRET, etc.
 npx prisma generate
-npx prisma db push
+```
+
+### Cloudflare Setup
+
+```bash
+# Create D1 database
+wrangler d1 create pyrotype-db
+
+# Create KV namespace for sessions
+wrangler kv namespace create SESSION_KV
+```
+
+Copy the example config and fill in your IDs:
+
+```bash
+cp wrangler.toml.example wrangler.toml
+```
+
+Edit `wrangler.toml` with your `account_id`, `database_id`, and KV `id`.
+
+Set your app secret:
+
+```bash
+wrangler secret put APP_KEY
+```
+
+### Database Migration
+
+```bash
+# Local development
+pnpm db:migrate:local
+
+# Remote (production)
+pnpm db:migrate:remote
 ```
 
 ### Development
 
 ```bash
-# Terminal 1 - Backend (port 3001)
+# Terminal 1 — Backend (Wrangler dev server)
 cd server
-npx tsx watch src/index.ts
+pnpm dev
 
-# Terminal 2 - Frontend (port 3007)
+# Terminal 2 — Frontend (Vite dev server, port 3007)
 pnpm dev
 ```
 
-Open [http://localhost:3007](http://localhost:3007) in your browser.
-
-### Build
+### Deploy
 
 ```bash
-pnpm build
+pnpm deploy
 ```
+
+Or push to `main` — GitHub Actions handles CI and deployment automatically.
 
 ### Testing
 
 ```bash
 cd server
-npx vitest run
+pnpm test
 ```
 
 ## Project Structure
@@ -84,14 +120,14 @@ pyrotype/
 │   │   │   ├── account/          # Profile, API keys, SSH keys, activity
 │   │   │   └── server/$id.tsx    # Server layout + sidebar
 │   │   ├── _admin.tsx            # Admin guard + admin sidebar
-│   │   ├── _admin/admin/         # Admin pages (users, servers, nodes, locations)
+│   │   ├── _admin/admin/         # Admin pages (users, servers, nodes, etc.)
 │   │   └── auth/                 # Login, 2FA, password reset
 │   ├── components/
-│   │   ├── ui/                   # shadcn/ui components (28)
-│   │   ├── server/               # Server page components (~60 files)
+│   │   ├── ui/                   # shadcn/ui components
+│   │   ├── server/               # Server page components
 │   │   ├── elements/             # Shared elements (spinner, editor, etc.)
 │   │   └── layout/               # Layout helpers
-│   ├── store/                    # Zustand store (5 slices)
+│   ├── store/                    # Zustand stores
 │   ├── lib/
 │   │   ├── api/                  # HTTP client + typed API functions
 │   │   ├── hooks/                # Custom hooks
@@ -99,38 +135,40 @@ pyrotype/
 │   └── styles.css                # Tailwind config + brand tokens
 ├── server/                       # Backend source
 │   ├── src/
-│   │   ├── routes/               # Express route handlers
-│   │   ├── middleware/            # Auth, validation, rate limiting, error handling
-│   │   ├── services/             # Auth, Wings/Elytra daemon clients
-│   │   ├── config/               # Database, Redis, logger, queue
+│   │   ├── routes/               # Hono route handlers
+│   │   ├── middleware/            # Auth, validation, rate limiting
+│   │   ├── services/             # Backups, schedules, databases, DNS, notifications
+│   │   ├── controllers/          # Admin, client, remote controllers
+│   │   ├── config/               # Database, mail, daemon client
 │   │   ├── utils/                # Errors, fractal responses, pagination, crypto
-│   │   └── constants/            # Permission definitions
+│   │   └── types/                # TypeScript interfaces (Env, SessionData, etc.)
 │   ├── prisma/
-│   │   └── schema.prisma         # 41 models
-│   └── tests/                    # 425 tests (auth, client, admin, security, integration)
-├── docs/                         # Project documentation
-└── vite.config.ts                # Vite config with /api proxy
+│   │   └── schema.prisma         # 39 models
+│   └── tests/                    # 534 tests (auth, client, admin, security, integration)
+├── migrations/                   # D1 SQL migrations
+├── wrangler.toml.example         # Cloudflare Worker config template
+└── vite.config.ts                # Vite + Cloudflare plugin
 ```
 
 ## Navigation
 
 Pyrotype uses three independent [shadcn Sidebar](https://ui.shadcn.com/docs/components/sidebar) layouts:
 
-**Client Sidebar** - Dashboard, account pages, and admin link (for root admins). Collapsible with icon-only mode and mobile drawer.
+**Client Sidebar** — Dashboard, account pages, and admin link (for root admins). Collapsible with icon-only mode and mobile drawer.
 
-**Server Sidebar** - Per-server navigation with 11 pages: console, files, databases, backups, network, users, schedules, startup, settings, activity, and software.
+**Server Sidebar** — Per-server navigation: console, files, databases, backups, network, users, schedules, startup, settings, activity, and software.
 
-**Admin Sidebar** - Separate admin section with its own layout and rose-colored accent theme. Manages users, servers, nodes, and locations. Requires root admin privileges.
+**Admin Sidebar** — Separate admin section with its own layout. Manages users, servers, nodes, locations, nests, eggs, databases, and domains.
 
 ## API
 
-All backend routes are prefixed with `/api/`. The Vite dev server proxies `/api` requests to the Express backend at port 3001.
+All backend routes are under `/api/`. Frontend SSR and API run in the same Worker.
 
 | Route Group | Description |
 |---|---|
 | `/api/auth/*` | Authentication (login, 2FA, password reset) |
 | `/api/client/*` | Client API (servers, account, API keys, SSH keys, nests) |
-| `/api/client/servers/elytra/:server/*` | Daemon server operations (console, files, power, backups) |
+| `/api/client/servers/:server/*` | Server operations (console, files, power, backups) |
 | `/api/application/*` | Admin API (CRUD for users, servers, nodes, locations, nests) |
 | `/api/remote/*` | Daemon-to-panel communication |
 
@@ -143,25 +181,6 @@ pnpm lint          # ESLint
 pnpm format        # Prettier check
 pnpm check         # Prettier write + ESLint fix
 ```
-
-## Cloudflare Workers Edition
-
-Want to run Pyrotype entirely on Cloudflare Workers with no VPS required? Check out the `cloudflare-workers` branch:
-
-```bash
-git clone -b cloudflare-workers https://github.com/Halfservers/pyrotype.git
-```
-
-That branch replaces the Node.js backend with a fully Cloudflare-native stack:
-- **Hono v4** instead of Express
-- **Cloudflare D1** instead of SQLite
-- **Cloudflare KV** instead of Redis
-- **Cloudflare Queues** instead of BullMQ
-- **Durable Objects** for WebSocket console proxy
-- **TanStack Form** instead of React Hook Form
-- **Native fetch()** instead of axios
-
-Everything runs in a single Cloudflare Worker — frontend SSR and backend API together.
 
 ## License
 
