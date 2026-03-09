@@ -1,7 +1,9 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../config/database';
-import { fractalItem } from '../../utils/response';
-import { NotFoundError } from '../../utils/errors';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../types/env'
+import { fractalItem } from '../../utils/response'
+import { NotFoundError } from '../../utils/errors'
+
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
 function transformUser(user: any) {
   return {
@@ -17,17 +19,14 @@ function transformUser(user: any) {
     '2fa_enabled': user.useTotp,
     created_at: user.createdAt.toISOString(),
     updated_at: user.updatedAt.toISOString(),
-  };
+  }
 }
 
-export async function index(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const externalId = req.params.externalId as string;
-    const user = await prisma.user.findFirst({ where: { externalId } });
-    if (!user) throw new NotFoundError('User not found');
+export async function index(c: AppContext) {
+  const prisma = c.var.prisma
+  const externalId = c.req.param('externalId')
+  const user = await prisma.user.findFirst({ where: { externalId } })
+  if (!user) throw new NotFoundError('User not found')
 
-    res.json(fractalItem('user', transformUser(user)));
-  } catch (err) {
-    next(err);
-  }
+  return c.json(fractalItem('user', transformUser(user)))
 }

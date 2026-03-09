@@ -1,15 +1,15 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { createApiKeySchema, type CreateApiKeyData } from '@/lib/validators/account'
 import { useCreateApiKeyMutation, useDeleteApiKeyMutation } from '@/lib/queries'
-import http from '@/lib/api/http'
+import { api } from '@/lib/http'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
@@ -19,14 +19,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
 
 export const Route = createFileRoute('/_authed/account/api' as any)({
   component: AccountApiPage,
@@ -50,13 +42,13 @@ function AccountApiPage() {
   const { data: keys = [], isLoading } = useQuery({
     queryKey: ['account', 'api-keys'],
     queryFn: async (): Promise<ApiKey[]> => {
-      const { data } = await http.get('/api/client/account/api-keys')
-      return (data.data || []).map((item: any) => ({
-        identifier: item.attributes.identifier,
-        description: item.attributes.description,
-        allowedIps: item.attributes.allowed_ips || [],
-        lastUsedAt: item.attributes.last_used_at,
-        createdAt: item.attributes.created_at,
+      const data = await api.get<{ data: Array<{ attributes: Record<string, any> }> }>('/api/client/account/api-keys')
+      return (data.data || []).map((item) => ({
+        identifier: item.attributes.identifier as string,
+        description: item.attributes.description as string,
+        allowedIps: (item.attributes.allowed_ips || []) as string[],
+        lastUsedAt: item.attributes.last_used_at as string | null,
+        createdAt: item.attributes.created_at as string,
       }))
     },
   })
@@ -64,33 +56,37 @@ function AccountApiPage() {
   const createKey = useCreateApiKeyMutation()
   const deleteKey = useDeleteApiKeyMutation()
 
-  const form = useForm<CreateApiKeyData>({
-    resolver: zodResolver(createApiKeySchema),
+  const form = useForm({
     defaultValues: { description: '', allowedIps: '' },
-  })
-
-  const onCreateSubmit = async (values: CreateApiKeyData) => {
-    setError(null)
-    try {
-      const result = await createKey.mutateAsync(values)
-      form.reset()
-      setShowCreateModal(false)
-      if (result?.secretToken) {
-        setCreatedKey(`${result.identifier}${result.secretToken}`)
+    onSubmit: async ({ value }) => {
+      setError(null)
+      try {
+        const result = await createKey.mutateAsync(value as CreateApiKeyData)
+        form.reset()
+        setShowCreateModal(false)
+        if (result?.secretToken) {
+          setCreatedKey(`${result.identifier}${result.secretToken}`)
+        }
+        queryClient.invalidateQueries({ queryKey: ['account', 'api-keys'] })
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to create API key.')
       }
-      queryClient.invalidateQueries({ queryKey: ['account', 'api-keys'] })
-    } catch (err: any) {
-      setError(err.message || 'Failed to create API key.')
-    }
-  }
+    },
+    validators: {
+      onSubmit: ({ value }) => {
+        const result = createApiKeySchema.safeParse(value)
+        return result.success ? undefined : result.error.issues.map((i) => i.message).join(', ')
+      },
+    },
+  })
 
   const onDelete = async () => {
     try {
       await deleteKey.mutateAsync(deleteIdentifier)
       setDeleteIdentifier('')
       queryClient.invalidateQueries({ queryKey: ['account', 'api-keys'] })
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete API key.')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to delete API key.')
     }
   }
 
@@ -187,54 +183,74 @@ function AccountApiPage() {
               Create a new API key for accessing the panel API.
             </DialogDescription>
           </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onCreateSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="A description for this API key" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="allowedIps"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Allowed IPs</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        placeholder="Leave blank for any IP"
-                      />
-                    </FormControl>
-                    <p className="text-xs text-zinc-500">
-                      Leave blank to allow any IP address. Provide IPs on separate lines.
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              form.handleSubmit()
+            }}
+            className="space-y-4"
+          >
+            <form.Field
+              name="description"
+              children={(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>Description</Label>
+                  <Input
+                    id={field.name}
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                    placeholder="A description for this API key"
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive">
+                      {field.state.meta.errors.map(String).join(', ')}
                     </p>
-                    <FormMessage />
-                  </FormItem>
+                  )}
+                </div>
+              )}
+            />
+            <form.Field
+              name="allowedIps"
+              children={(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>Allowed IPs</Label>
+                  <Input
+                    id={field.name}
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                    placeholder="Leave blank for any IP"
+                  />
+                  <p className="text-xs text-zinc-500">
+                    Leave blank to allow any IP address. Provide IPs on separate lines.
+                  </p>
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive">
+                      {field.state.meta.errors.map(String).join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+            />
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+              >
+                Cancel
+              </Button>
+              <form.Subscribe
+                selector={(s) => s.isSubmitting}
+                children={(isSubmitting) => (
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? 'Creating...' : 'Create Key'}
+                  </Button>
                 )}
               />
-              <DialogFooter>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting ? 'Creating...' : 'Create Key'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

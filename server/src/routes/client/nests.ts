@@ -1,7 +1,10 @@
-import { Router } from 'express';
-import * as nestController from '../../controllers/client/nestController';
+import { Hono } from 'hono'
+import type { Env, HonoVariables } from '../../types/env'
+import * as nestController from '../../controllers/client/nestController'
 
-export const nestRoutes = Router();
+type AppType = { Bindings: Env; Variables: HonoVariables }
 
-nestRoutes.get('/', nestController.index);
-nestRoutes.get('/:nest', nestController.view);
+export const nestsApp = new Hono<AppType>()
+
+nestsApp.get('/', nestController.index)
+nestsApp.get('/:nest', nestController.view)

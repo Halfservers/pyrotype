@@ -31,7 +31,7 @@ import { useFlash, usePermissions } from '@/lib/hooks';
 import { useServerStore } from '@/store/server';
 import { useAppStore } from '@/store';
 
-import { httpErrorToHuman } from '@/lib/api/http';
+import { httpErrorToHuman } from '@/lib/http';
 import { getServerBackupDownloadUrl } from '@/lib/api/server/backups';
 import { useUnifiedBackups } from '../use-unified-backups';
 
@@ -81,9 +81,9 @@ const BackupContextMenu = ({ backup }: Props) => {
     setLoading(true);
     clearFlashes('backup:delete');
     try {
-      const http = (await import('@/lib/api/http')).default;
-      await http.delete(`/api/client/servers/${uuid}/backups/${backup.uuid}`, {
-        data: { password: deletePassword, ...(hasTwoFactor ? { totp_code: deleteTotpCode } : {}) },
+      const { api: httpApi } = await import('@/lib/http');
+      await httpApi.post(`/api/client/servers/${uuid}/backups/${backup.uuid}/delete`, {
+        password: deletePassword, ...(hasTwoFactor ? { totp_code: deleteTotpCode } : {}),
       });
       setLoading(false);
       setModal('');
@@ -109,8 +109,8 @@ const BackupContextMenu = ({ backup }: Props) => {
     setLoading(true);
     clearFlashes('backup:restore');
     try {
-      const http = (await import('@/lib/api/http')).default;
-      await http.post(`/api/client/servers/${uuid}/backups/${backup.uuid}/restore`, {
+      const { api: httpApi } = await import('@/lib/http');
+      await httpApi.post(`/api/client/servers/${uuid}/backups/${backup.uuid}/restore`, {
         password: restorePassword,
         ...(hasTwoFactor ? { totp_code: restoreTotpCode } : {}),
       });

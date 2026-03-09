@@ -1,7 +1,10 @@
-import { Router } from 'express';
-import * as serverController from '../../controllers/client/serverController';
+import { Hono } from 'hono'
+import type { Env, HonoVariables } from '../../types/env'
+import * as serverController from '../../controllers/client/serverController'
 
-export const clientServerRoutes = Router();
+type AppType = { Bindings: Env; Variables: HonoVariables }
 
-clientServerRoutes.get('/:server', serverController.index);
-clientServerRoutes.get('/:server/resources', serverController.resources);
+export const clientServerApp = new Hono<AppType>()
+
+clientServerApp.get('/:server', serverController.index)
+clientServerApp.get('/:server/resources', serverController.resources)

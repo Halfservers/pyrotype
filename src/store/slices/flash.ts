@@ -21,9 +21,9 @@ export interface FlashSlice {
 
 function httpErrorToHuman(error: unknown): string {
   if (error instanceof Error) {
-    // Axios-style error with response
-    const axiosError = error as Error & { response?: { data?: { errors?: Array<{ detail?: string }> } } };
-    const detail = axiosError.response?.data?.errors?.[0]?.detail;
+    // ApiError from the fetch client has errors[0].detail
+    const apiError = error as Error & { errors?: Array<{ detail?: string }> };
+    const detail = apiError.errors?.[0]?.detail;
     if (detail) return detail;
     return error.message;
   }

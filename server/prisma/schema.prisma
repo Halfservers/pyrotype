@@ -2,12 +2,13 @@
 // All table/column names use @@map/@map to match the existing Laravel snake_case database schema
 
 generator client {
-  provider = "prisma-client"
+  provider = "prisma-client-js"
   output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 // ─── User ───────────────────────────────────────────────────────────────────

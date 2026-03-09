@@ -1,16 +1,16 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 import { type Allocation, rawDataToServerAllocation } from '@/lib/api/transformers';
 
 export const createServerAllocation = async (uuid: string): Promise<Allocation> => {
-  const { data } = await http.post(
+  const data: any = await api.post(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/network/allocations`,
   );
   return rawDataToServerAllocation(data);
 };
 
 export const deleteServerAllocation = async (uuid: string, id: number): Promise<void> => {
-  await http.delete(
+  await api.delete(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/network/allocations/${id}`,
   );
 };
@@ -19,7 +19,7 @@ export const setPrimaryServerAllocation = async (
   uuid: string,
   id: number,
 ): Promise<Allocation> => {
-  const { data } = await http.post(
+  const data: any = await api.post(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/network/allocations/${id}/primary`,
   );
   return rawDataToServerAllocation(data);
@@ -30,7 +30,7 @@ export const setServerAllocationNotes = async (
   id: number,
   notes: string | null,
 ): Promise<Allocation> => {
-  const { data } = await http.post(
+  const data: any = await api.post(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/network/allocations/${id}`,
     { notes },
   );
@@ -62,52 +62,32 @@ export interface AvailabilityResponse {
   message: string;
 }
 
-export const getSubdomainInfo = (uuid: string): Promise<SubdomainInfo> => {
-  return new Promise((resolve, reject) => {
-    http
-      .get(`/api/client/servers/${uuid}/subdomain`)
-      .then(({ data }) => resolve(data))
-      .catch(reject);
-  });
+export const getSubdomainInfo = async (uuid: string): Promise<SubdomainInfo> => {
+  return api.get<SubdomainInfo>(`/api/client/servers/${uuid}/subdomain`);
 };
 
-export const setSubdomain = (
+export const setSubdomain = async (
   uuid: string,
   subdomain: string,
   domainId: number,
 ): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post(`/api/client/servers/${uuid}/subdomain`, {
-        subdomain,
-        domain_id: domainId,
-      })
-      .then(() => resolve())
-      .catch(reject);
+  await api.post(`/api/client/servers/${uuid}/subdomain`, {
+    subdomain,
+    domain_id: domainId,
   });
 };
 
-export const deleteSubdomain = (uuid: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .delete(`/api/client/servers/${uuid}/subdomain`)
-      .then(() => resolve())
-      .catch(reject);
-  });
+export const deleteSubdomain = async (uuid: string): Promise<void> => {
+  await api.delete(`/api/client/servers/${uuid}/subdomain`);
 };
 
-export const checkSubdomainAvailability = (
+export const checkSubdomainAvailability = async (
   uuid: string,
   subdomain: string,
   domainId: number,
 ): Promise<AvailabilityResponse> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post(`/api/client/servers/${uuid}/subdomain/check-availability`, {
-        subdomain,
-        domain_id: domainId,
-      })
-      .then(({ data }) => resolve(data))
-      .catch(reject);
-  });
+  return api.post<AvailabilityResponse>(
+    `/api/client/servers/${uuid}/subdomain/check-availability`,
+    { subdomain, domain_id: domainId },
+  );
 };

@@ -1,212 +1,168 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { request, createTestApp, createAgent } from '../helpers/test-app';
-import { ADMIN_USER, INVALID_CREDENTIALS, NONEXISTENT_USER, MALFORMED_INPUTS } from '../helpers/fixtures';
-import type supertest from 'supertest';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  fractalItem,
+  fractalList,
+  fractalPaginated,
+} from '../../src/utils/response'
 
-describe('Response Shapes', () => {
-  // Shared authenticated agent to avoid hitting rate limits on /api/auth/login
-  let authedAgent: supertest.SuperAgentTest;
+describe('fractalItem', () => {
+  it('wraps attributes with object type', () => {
+    const result = fractalItem('server', { id: 1, name: 'Test' })
 
-  beforeAll(async () => {
-    const app = createTestApp();
-    authedAgent = createAgent(app);
-    await authedAgent.get('/api/sanctum/csrf-cookie');
-    await authedAgent.post('/api/auth/login').send(ADMIN_USER).expect(200);
-  });
+    expect(result).toEqual({
+      object: 'server',
+      attributes: { id: 1, name: 'Test' },
+    })
+  })
 
-  describe('Error Response Format', () => {
-    function expectErrorShape(body: any) {
-      expect(body).toHaveProperty('errors');
-      expect(Array.isArray(body.errors)).toBe(true);
-      expect(body.errors.length).toBeGreaterThan(0);
-      for (const error of body.errors) {
-        expect(error).toHaveProperty('code');
-        expect(error).toHaveProperty('status');
-        expect(error).toHaveProperty('detail');
-        expect(typeof error.code).toBe('string');
-        expect(typeof error.status).toBe('string');
-        expect(typeof error.detail).toBe('string');
-      }
+  it('preserves the exact object string', () => {
+    const result = fractalItem('custom_object', { foo: 'bar' })
+    expect(result.object).toBe('custom_object')
+  })
+
+  it('handles empty attributes', () => {
+    const result = fractalItem('empty', {})
+    expect(result).toEqual({ object: 'empty', attributes: {} })
+  })
+
+  it('handles complex nested attributes', () => {
+    const attrs = {
+      id: 1,
+      relationships: {
+        allocations: { object: 'list', data: [] },
+      },
     }
+    const result = fractalItem('server', attrs)
+    expect(result.attributes).toEqual(attrs)
+  })
 
-    it('should return error format for invalid login credentials', async () => {
-      const res = await request()
-        .post('/api/auth/login')
-        .send(INVALID_CREDENTIALS);
+  it('handles null and undefined attribute values', () => {
+    const result = fractalItem('server', { id: null, name: undefined })
+    expect(result.attributes.id).toBeNull()
+    expect(result.attributes.name).toBeUndefined()
+  })
+})
 
-      expect(res.status).toBe(422);
-      expectErrorShape(res.body);
-    });
+describe('fractalList', () => {
+  it('wraps array of items correctly', () => {
+    const items = [
+      { id: 1, name: 'Server A' },
+      { id: 2, name: 'Server B' },
+    ]
+    const result = fractalList('server', items)
 
-    it('should return error format for nonexistent user login', async () => {
-      const res = await request()
-        .post('/api/auth/login')
-        .send(NONEXISTENT_USER);
+    expect(result.object).toBe('list')
+    expect(result.data).toHaveLength(2)
+    expect(result.data[0]).toEqual({
+      object: 'server',
+      attributes: { id: 1, name: 'Server A' },
+    })
+    expect(result.data[1]).toEqual({
+      object: 'server',
+      attributes: { id: 2, name: 'Server B' },
+    })
+  })
 
-      expect(res.status).toBe(422);
-      expectErrorShape(res.body);
-    });
+  it('handles empty array', () => {
+    const result = fractalList('server', [])
 
-    it('should return error format for missing credentials', async () => {
-      const res = await request()
-        .post('/api/auth/login')
-        .send(MALFORMED_INPUTS.emptyBody);
+    expect(result.object).toBe('list')
+    expect(result.data).toEqual([])
+    expect(result.data).toHaveLength(0)
+  })
 
-      expect(res.status).toBe(422);
-      expectErrorShape(res.body);
-    });
+  it('handles single item array', () => {
+    const result = fractalList('node', [{ id: 1 }])
 
-    it('should return error format for missing user field', async () => {
-      const res = await request()
-        .post('/api/auth/login')
-        .send(MALFORMED_INPUTS.missingUser);
+    expect(result.data).toHaveLength(1)
+    expect(result.data[0].object).toBe('node')
+  })
 
-      expect(res.status).toBe(422);
-      expectErrorShape(res.body);
-    });
+  it('each data element has object and attributes keys', () => {
+    const result = fractalList('egg', [{ name: 'Vanilla' }, { name: 'Paper' }])
 
-    it('should return error format for missing password field', async () => {
-      const res = await request()
-        .post('/api/auth/login')
-        .send(MALFORMED_INPUTS.missingPassword);
+    for (const item of result.data) {
+      expect(item).toHaveProperty('object', 'egg')
+      expect(item).toHaveProperty('attributes')
+    }
+  })
+})
 
-      expect(res.status).toBe(422);
-      expectErrorShape(res.body);
-    });
+describe('fractalPaginated', () => {
+  it('includes pagination metadata', () => {
+    const items = [{ id: 1 }, { id: 2 }]
+    const result = fractalPaginated('server', items, 50, 1, 25)
 
-    it('should return error format for unauthenticated access to protected routes', async () => {
-      const res = await request().get('/api/client');
+    expect(result.object).toBe('list')
+    expect(result.data).toHaveLength(2)
+    expect(result.meta.pagination).toEqual({
+      total: 50,
+      count: 2,
+      per_page: 25,
+      current_page: 1,
+      total_pages: 2,
+      links: {},
+    })
+  })
 
-      expect(res.status).toBe(401);
-      expectErrorShape(res.body);
-    });
+  it('calculates total_pages correctly', () => {
+    const result = fractalPaginated('server', [], 100, 1, 25)
+    expect(result.meta.pagination.total_pages).toBe(4)
+  })
 
-    it('should return error format for unauthenticated account access', async () => {
-      const res = await request().get('/api/client/account');
+  it('calculates total_pages with non-even division', () => {
+    const result = fractalPaginated('server', [], 101, 1, 25)
+    expect(result.meta.pagination.total_pages).toBe(5) // Math.ceil(101/25)
+  })
 
-      expect(res.status).toBe(401);
-      expectErrorShape(res.body);
-    });
-  });
+  it('count reflects actual items in page, not total', () => {
+    // Last page with only 3 items out of 53 total
+    const lastPageItems = [{ id: 51 }, { id: 52 }, { id: 53 }]
+    const result = fractalPaginated('server', lastPageItems, 53, 3, 25)
 
-  describe('Login Success Response Shape', () => {
-    it('should return proper data shape on successful login', async () => {
-      // Use a fresh app to avoid rate limiting
-      const app = createTestApp();
-      const res = await request(app)
-        .post('/api/auth/login')
-        .send(ADMIN_USER);
+    expect(result.meta.pagination.count).toBe(3)
+    expect(result.meta.pagination.total).toBe(53)
+    expect(result.meta.pagination.current_page).toBe(3)
+  })
 
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('data');
-      expect(res.body.data).toHaveProperty('complete');
-      expect(res.body.data).toHaveProperty('intended');
-      expect(res.body.data).toHaveProperty('user');
-      expect(typeof res.body.data.complete).toBe('boolean');
-      expect(typeof res.body.data.intended).toBe('string');
+  it('handles empty list with zero total', () => {
+    const result = fractalPaginated('server', [], 0, 1, 25)
 
-      // User object shape
-      const user = res.body.data.user;
-      expect(user).toHaveProperty('object', 'user');
-      expect(user).toHaveProperty('attributes');
-      expect(user.attributes).toHaveProperty('id');
-      expect(user.attributes).toHaveProperty('uuid');
-      expect(user.attributes).toHaveProperty('username');
-      expect(user.attributes).toHaveProperty('email');
-      expect(user.attributes).toHaveProperty('language');
-      expect(user.attributes).toHaveProperty('root_admin');
-      expect(user.attributes).toHaveProperty('use_totp');
-      expect(user.attributes).toHaveProperty('name_first');
-      expect(user.attributes).toHaveProperty('name_last');
-      expect(user.attributes).toHaveProperty('created_at');
-      expect(user.attributes).toHaveProperty('updated_at');
-    });
+    expect(result.data).toEqual([])
+    expect(result.meta.pagination.total).toBe(0)
+    expect(result.meta.pagination.count).toBe(0)
+    expect(result.meta.pagination.total_pages).toBe(0)
+    expect(result.meta.pagination.current_page).toBe(1)
+  })
 
-    it('should return complete=true and intended=/ for non-2FA user', async () => {
-      const app = createTestApp();
-      const res = await request(app)
-        .post('/api/auth/login')
-        .send(ADMIN_USER);
+  it('handles large pagination values', () => {
+    const items = Array.from({ length: 100 }, (_, i) => ({ id: i + 1 }))
+    const result = fractalPaginated('server', items, 1_000_000, 500, 100)
 
-      expect(res.body.data.complete).toBe(true);
-      expect(res.body.data.intended).toBe('/');
-    });
-  });
+    expect(result.meta.pagination.total).toBe(1_000_000)
+    expect(result.meta.pagination.count).toBe(100)
+    expect(result.meta.pagination.per_page).toBe(100)
+    expect(result.meta.pagination.current_page).toBe(500)
+    expect(result.meta.pagination.total_pages).toBe(10_000)
+  })
 
-  describe('Client Server List Pagination Structure', () => {
-    it('should return proper paginated list structure', async () => {
-      const res = await authedAgent.get('/api/client');
+  it('wraps each item with fractalItem structure', () => {
+    const items = [{ name: 'Alpha' }, { name: 'Beta' }]
+    const result = fractalPaginated('location', items, 2, 1, 10)
 
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('object', 'list');
-      expect(res.body).toHaveProperty('data');
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(res.body).toHaveProperty('meta');
-      expect(res.body.meta).toHaveProperty('pagination');
+    for (const item of result.data) {
+      expect(item).toHaveProperty('object', 'location')
+      expect(item).toHaveProperty('attributes')
+    }
+  })
 
-      const pagination = res.body.meta.pagination;
-      expect(pagination).toHaveProperty('total');
-      expect(pagination).toHaveProperty('count');
-      expect(pagination).toHaveProperty('per_page');
-      expect(pagination).toHaveProperty('current_page');
-      expect(pagination).toHaveProperty('total_pages');
-      expect(pagination).toHaveProperty('links');
+  it('links is an empty object by default', () => {
+    const result = fractalPaginated('server', [{ id: 1 }], 1, 1, 10)
+    expect(result.meta.pagination.links).toEqual({})
+  })
 
-      expect(typeof pagination.total).toBe('number');
-      expect(typeof pagination.count).toBe('number');
-      expect(typeof pagination.per_page).toBe('number');
-      expect(typeof pagination.current_page).toBe('number');
-      expect(typeof pagination.total_pages).toBe('number');
-    });
-
-    it('should have correct pagination defaults', async () => {
-      const res = await authedAgent.get('/api/client');
-
-      const pagination = res.body.meta.pagination;
-      expect(pagination.current_page).toBe(1);
-      expect(pagination.per_page).toBe(50);
-    });
-
-    it('should accept custom per_page parameter', async () => {
-      const res = await authedAgent.get('/api/client?per_page=10');
-
-      expect(res.status).toBe(200);
-      expect(res.body.meta.pagination.per_page).toBe(10);
-    });
-  });
-
-  describe('CSRF Cookie Endpoint Response', () => {
-    it('should return 204 with empty body', async () => {
-      const res = await request().get('/api/sanctum/csrf-cookie');
-
-      expect(res.status).toBe(204);
-      expect(res.text).toBeFalsy();
-    });
-  });
-
-  describe('Client Permissions Response Shape', () => {
-    it('should return system_permissions object', async () => {
-      const res = await authedAgent.get('/api/client/permissions');
-
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty('object', 'system_permissions');
-      expect(res.body).toHaveProperty('attributes');
-      expect(res.body.attributes).toHaveProperty('permissions');
-    });
-  });
-
-  describe('Fractal Item Wrapper', () => {
-    it('should wrap individual server items with object and attributes', async () => {
-      const listRes = await authedAgent.get('/api/client');
-
-      if (listRes.body.data.length > 0) {
-        const item = listRes.body.data[0];
-        expect(item).toHaveProperty('object', 'server');
-        expect(item).toHaveProperty('attributes');
-        expect(item.attributes).toHaveProperty('identifier');
-        expect(item.attributes).toHaveProperty('uuid');
-        expect(item.attributes).toHaveProperty('name');
-      }
-    });
-  });
-});
+  it('per_page of 1 gives total_pages equal to total', () => {
+    const result = fractalPaginated('server', [{ id: 1 }], 7, 1, 1)
+    expect(result.meta.pagination.total_pages).toBe(7)
+  })
+})

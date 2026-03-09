@@ -1,9 +1,6 @@
-import http, {
-  type PaginatedResult,
-  type QueryBuilderParams,
-  getPaginationSet,
-  withQueryBuilderParams,
-} from '@/lib/api/http';
+import { api } from '@/lib/http';
+import type { PaginatedResult } from '@/types/api';
+import { type QueryBuilderParams, getPaginationSet, withQueryBuilderParams } from '@/lib/fractal';
 
 export type ActivityLogFilters = QueryBuilderParams<'ip' | 'event', 'timestamp'>;
 
@@ -48,11 +45,9 @@ function toActivityLog(data: any): ActivityLog {
 export const getAccountActivity = async (
   filters?: ActivityLogFilters,
 ): Promise<PaginatedResult<ActivityLog>> => {
-  const { data } = await http.get('/api/client/account/activity', {
-    params: {
-      ...withQueryBuilderParams(filters),
-      include: ['actor'],
-    },
+  const data: any = await api.get('/api/client/account/activity', {
+    ...withQueryBuilderParams(filters),
+    include: 'actor',
   });
 
   return {

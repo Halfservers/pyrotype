@@ -22,10 +22,13 @@ export type {
   FractalResponseData,
   FractalResponseList,
   FractalPaginatedResponse,
+  FractalItem,
+  PaginatedResponse,
   PaginatedResult,
   PaginationDataSet,
-  QueryBuilderParams,
 } from '@/types/api';
+
+export type { QueryBuilderParams } from '@/lib/fractal';
 
 export type { Nest, Egg } from '@/types/nest';
 

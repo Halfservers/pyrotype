@@ -1,0 +1,37 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "pyrotype-api"
+main = "src/index.ts"
+compatibility_date = "2025-09-02"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pyrotype-db"
+database_id = "REPLACE_AFTER_CREATING_WITH_wrangler_d1_create"
+
+[[kv_namespaces]]
+binding = "SESSION_KV"
+id = "REPLACE_AFTER_CREATING_WITH_wrangler_kv_namespace_create"
+
+[[queues.producers]]
+queue = "pyrotype-jobs"
+binding = "JOB_QUEUE"
+
+[[queues.consumers]]
+queue = "pyrotype-jobs"
+max_batch_size = 10
+max_batch_timeout = 30
+
+[[durable_objects.bindings]]
+name = "SERVER_CONSOLE"
+class_name = "ServerConsole"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ServerConsole"]
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+NODE_ENV = "production"

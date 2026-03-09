@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 
 import {
@@ -17,15 +16,8 @@ import { useAppStore } from '@/store'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
 
 export const Route = createFileRoute('/_authed/account/' as any)({
   component: AccountOverviewPage,
@@ -48,25 +40,29 @@ function UpdateEmailSection() {
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const form = useForm<UpdateEmailData>({
-    resolver: zodResolver(updateEmailSchema),
+  const form = useForm({
     defaultValues: {
       email: userData?.email ?? '',
       password: '',
     },
+    onSubmit: async ({ value }) => {
+      setError(null)
+      setSuccess(null)
+      try {
+        await updateEmail.mutateAsync(value as UpdateEmailData)
+        setSuccess('Email updated successfully.')
+        form.setFieldValue('password', '')
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to update email.')
+      }
+    },
+    validators: {
+      onSubmit: ({ value }) => {
+        const result = updateEmailSchema.safeParse(value)
+        return result.success ? undefined : result.error.issues.map((i) => i.message).join(', ')
+      },
+    },
   })
-
-  const onSubmit = async (values: UpdateEmailData) => {
-    setError(null)
-    setSuccess(null)
-    try {
-      await updateEmail.mutateAsync(values)
-      setSuccess('Email updated successfully.')
-      form.setValue('password', '')
-    } catch (err: any) {
-      setError(err.message || 'Failed to update email.')
-    }
-  }
 
   return (
     <Card className="bg-[#ffffff09] border-[#ffffff12]">
@@ -84,47 +80,68 @@ function UpdateEmailSection() {
             {success}
           </div>
         )}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-zinc-300">Email</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="email"
-                      className="bg-[#ffffff09] border-[#ffffff12] text-white"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-zinc-300">Current Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="password"
-                      className="bg-[#ffffff09] border-[#ffffff12] text-white"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Updating...' : 'Update Email'}
-            </Button>
-          </form>
-        </Form>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            form.handleSubmit()
+          }}
+          className="space-y-4"
+        >
+          <form.Field
+            name="email"
+            children={(field) => (
+              <div className="space-y-2">
+                <Label htmlFor={field.name} className="text-zinc-300">
+                  Email
+                </Label>
+                <Input
+                  id={field.name}
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  type="email"
+                  className="bg-[#ffffff09] border-[#ffffff12] text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">
+                    {field.state.meta.errors.map(String).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          />
+          <form.Field
+            name="password"
+            children={(field) => (
+              <div className="space-y-2">
+                <Label htmlFor={field.name} className="text-zinc-300">
+                  Current Password
+                </Label>
+                <Input
+                  id={field.name}
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  type="password"
+                  className="bg-[#ffffff09] border-[#ffffff12] text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">
+                    {field.state.meta.errors.map(String).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          />
+          <form.Subscribe
+            selector={(s) => s.isSubmitting}
+            children={(isSubmitting) => (
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Updating...' : 'Update Email'}
+              </Button>
+            )}
+          />
+        </form>
       </CardContent>
     </Card>
   )
@@ -135,26 +152,30 @@ function UpdatePasswordSection() {
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const form = useForm<UpdatePasswordData>({
-    resolver: zodResolver(updatePasswordSchema),
+  const form = useForm({
     defaultValues: {
       current: '',
       password: '',
       confirmPassword: '',
     },
+    onSubmit: async ({ value }) => {
+      setError(null)
+      setSuccess(null)
+      try {
+        await updatePassword.mutateAsync(value as UpdatePasswordData)
+        setSuccess('Password updated successfully.')
+        form.reset()
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to update password.')
+      }
+    },
+    validators: {
+      onSubmit: ({ value }) => {
+        const result = updatePasswordSchema.safeParse(value)
+        return result.success ? undefined : result.error.issues.map((i) => i.message).join(', ')
+      },
+    },
   })
-
-  const onSubmit = async (values: UpdatePasswordData) => {
-    setError(null)
-    setSuccess(null)
-    try {
-      await updatePassword.mutateAsync(values)
-      setSuccess('Password updated successfully.')
-      form.reset()
-    } catch (err: any) {
-      setError(err.message || 'Failed to update password.')
-    }
-  }
 
   return (
     <Card className="bg-[#ffffff09] border-[#ffffff12]">
@@ -172,64 +193,91 @@ function UpdatePasswordSection() {
             {success}
           </div>
         )}
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="current"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-zinc-300">Current Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="password"
-                      className="bg-[#ffffff09] border-[#ffffff12] text-white"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-zinc-300">New Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="password"
-                      className="bg-[#ffffff09] border-[#ffffff12] text-white"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-zinc-300">Confirm Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="password"
-                      className="bg-[#ffffff09] border-[#ffffff12] text-white"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? 'Updating...' : 'Update Password'}
-            </Button>
-          </form>
-        </Form>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            form.handleSubmit()
+          }}
+          className="space-y-4"
+        >
+          <form.Field
+            name="current"
+            children={(field) => (
+              <div className="space-y-2">
+                <Label htmlFor={field.name} className="text-zinc-300">
+                  Current Password
+                </Label>
+                <Input
+                  id={field.name}
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  type="password"
+                  className="bg-[#ffffff09] border-[#ffffff12] text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">
+                    {field.state.meta.errors.map(String).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          />
+          <form.Field
+            name="password"
+            children={(field) => (
+              <div className="space-y-2">
+                <Label htmlFor={field.name} className="text-zinc-300">
+                  New Password
+                </Label>
+                <Input
+                  id={field.name}
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  type="password"
+                  className="bg-[#ffffff09] border-[#ffffff12] text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">
+                    {field.state.meta.errors.map(String).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          />
+          <form.Field
+            name="confirmPassword"
+            children={(field) => (
+              <div className="space-y-2">
+                <Label htmlFor={field.name} className="text-zinc-300">
+                  Confirm Password
+                </Label>
+                <Input
+                  id={field.name}
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  type="password"
+                  className="bg-[#ffffff09] border-[#ffffff12] text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">
+                    {field.state.meta.errors.map(String).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          />
+          <form.Subscribe
+            selector={(s) => s.isSubmitting}
+            children={(isSubmitting) => (
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Updating...' : 'Update Password'}
+              </Button>
+            )}
+          />
+        </form>
       </CardContent>
     </Card>
   )

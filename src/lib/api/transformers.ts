@@ -1,4 +1,4 @@
-import type { FractalResponseData } from '@/lib/api/http';
+import type { FractalResponseData } from '@/types/api';
 
 export interface Allocation {
   id: number;

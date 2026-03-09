@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -10,6 +9,11 @@ interface DownloadProps {
   directory?: string;
 }
 
+function getCookie(name: string): string | undefined {
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
 const DownloadModrinth = ({ url, serverUuid, directory = 'mods' }: DownloadProps) => {
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -19,34 +23,47 @@ const DownloadModrinth = ({ url, serverUuid, directory = 'mods' }: DownloadProps
     try {
       toast.info('Downloading file from Modrinth...');
 
-      const downloadResponse = await axios.get(url, { responseType: 'blob' });
+      const downloadResponse = await fetch(url);
+      if (!downloadResponse.ok) {
+        throw new Error(`Download failed: ${downloadResponse.status}`);
+      }
+      const blob = await downloadResponse.blob();
       const fileName = url.split('/').pop() || 'modrinth-file.jar';
-      const file = new Blob([downloadResponse.data], {
-        type: downloadResponse.headers['content-type'] || 'application/java-archive',
+      const file = new Blob([blob], {
+        type: downloadResponse.headers.get('content-type') || 'application/java-archive',
       });
 
       const formData = new FormData();
       formData.append('files', file, fileName);
 
       toast.info(`Uploading ${fileName} to server...`);
-      await axios.post(`/api/client/servers/${serverUuid}/files/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        params: { directory: `/container/${directory}` },
-        onUploadProgress: (event) => {
-          if (event.total) {
-            setProgress(Math.round((event.loaded * 100) / event.total));
-          }
-        },
+
+      const headers: Record<string, string> = {};
+      const csrfToken = getCookie('XSRF-TOKEN');
+      if (csrfToken) {
+        headers['X-XSRF-TOKEN'] = csrfToken;
+      }
+
+      const uploadUrl =
+        `/api/client/servers/${serverUuid}/files/upload?` +
+        new URLSearchParams({ directory: `/container/${directory}` }).toString();
+
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        headers,
       });
 
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed: ${uploadResponse.status}`);
+      }
+
+      setProgress(100);
       toast.success(`${fileName} uploaded successfully!`);
     } catch (error) {
-      if (axios.isCancel(error)) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
         toast.warning('Request cancelled.');
-      } else if (axios.isAxiosError(error) && error.response) {
-        toast.error(`Server error! Status: ${error.response.status}`);
-      } else if (axios.isAxiosError(error) && error.request) {
-        toast.error('No response from server.');
       } else {
         toast.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }

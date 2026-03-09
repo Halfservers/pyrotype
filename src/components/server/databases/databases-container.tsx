@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm } from '@tanstack/react-form';
 
 import { ServerContentBlock } from '@/components/layout/page-header';
 import {
@@ -15,13 +15,8 @@ import DatabaseRow from '@/components/server/databases/database-row';
 import { useFlash, usePermissions } from '@/lib/hooks';
 import { useServerStore } from '@/store/server';
 
-import { httpErrorToHuman } from '@/lib/api/http';
+import { httpErrorToHuman } from '@/lib/http';
 import { createServerDatabase, getServerDatabases, type ServerDatabase } from '@/lib/api/server/databases';
-
-interface DatabaseValues {
-  databaseName: string;
-  connectionsFrom: string;
-}
 
 const DatabasesContainer = () => {
   const uuid = useServerStore((state) => state.server?.uuid ?? '');
@@ -34,24 +29,23 @@ const DatabasesContainer = () => {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [canCreate] = usePermissions(['database.create']);
 
-  const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<DatabaseValues>({
+  const form = useForm({
     defaultValues: { databaseName: '', connectionsFrom: '' },
+    onSubmit: async ({ value }) => {
+      clearFlashes('database:create');
+      try {
+        const database = await createServerDatabase(uuid, {
+          databaseName: value.databaseName,
+          connectionsFrom: value.connectionsFrom || '%',
+        });
+        form.reset();
+        appendDatabase(database);
+        setCreateModalVisible(false);
+      } catch (error) {
+        addError({ key: 'database:create', message: httpErrorToHuman(error) });
+      }
+    },
   });
-
-  const submitDatabase = async (values: DatabaseValues) => {
-    clearFlashes('database:create');
-    try {
-      const database = await createServerDatabase(uuid, {
-        databaseName: values.databaseName,
-        connectionsFrom: values.connectionsFrom || '%',
-      });
-      reset();
-      appendDatabase(database);
-      setCreateModalVisible(false);
-    } catch (error) {
-      addError({ key: 'database:create', message: httpErrorToHuman(error) });
-    }
-  };
 
   useEffect(() => {
     setLoading(!databases.length);
@@ -95,42 +89,60 @@ const DatabasesContainer = () => {
         )}
       </div>
 
-      <Dialog open={createModalVisible} onOpenChange={(open) => { if (!open) { reset(); setCreateModalVisible(false); } }}>
+      <Dialog open={createModalVisible} onOpenChange={(open) => { if (!open) { form.reset(); setCreateModalVisible(false); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create new database</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit(submitDatabase)} className='flex flex-col gap-4'>
-            <div>
-              <Label htmlFor='database_name'>Database Name</Label>
-              <Input
-                id='database_name'
-                {...register('databaseName', {
-                  required: 'A database name must be provided.',
-                  minLength: { value: 3, message: 'Database name must be at least 3 characters.' },
-                  maxLength: { value: 48, message: 'Database name must not exceed 48 characters.' },
-                  pattern: { value: /^[\w\-.]{3,48}$/, message: 'Database name should only contain alphanumeric characters, underscores, dashes, and/or periods.' },
-                })}
-              />
-              <p className='text-xs text-zinc-400 mt-1'>A descriptive name for your database instance.</p>
-            </div>
-            <div>
-              <Label htmlFor='connections_from'>Connections From</Label>
-              <Input
-                id='connections_from'
-                {...register('connectionsFrom', {
-                  pattern: { value: /^[\w\-/.%:]+$/, message: 'A valid host address must be provided.' },
-                })}
-              />
-              <p className='text-xs text-zinc-400 mt-1'>
-                Where connections should be allowed from. Leave blank to allow connections from anywhere.
-              </p>
-            </div>
-            <div className='flex gap-3 justify-end'>
-              <Button type='submit' disabled={isSubmitting}>
-                {isSubmitting ? 'Creating...' : 'Create Database'}
-              </Button>
-            </div>
+          <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }} className='flex flex-col gap-4'>
+            <form.Field
+              name='databaseName'
+              children={(field) => (
+                <div>
+                  <Label htmlFor='database_name'>Database Name</Label>
+                  <Input
+                    id='database_name'
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className='text-xs text-red-400 mt-1'>{field.state.meta.errors.map(String).join(', ')}</p>
+                  )}
+                  <p className='text-xs text-zinc-400 mt-1'>A descriptive name for your database instance.</p>
+                </div>
+              )}
+            />
+            <form.Field
+              name='connectionsFrom'
+              children={(field) => (
+                <div>
+                  <Label htmlFor='connections_from'>Connections From</Label>
+                  <Input
+                    id='connections_from'
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className='text-xs text-red-400 mt-1'>{field.state.meta.errors.map(String).join(', ')}</p>
+                  )}
+                  <p className='text-xs text-zinc-400 mt-1'>
+                    Where connections should be allowed from. Leave blank to allow connections from anywhere.
+                  </p>
+                </div>
+              )}
+            />
+            <form.Subscribe
+              selector={(s) => s.isSubmitting}
+              children={(isSubmitting) => (
+                <div className='flex gap-3 justify-end'>
+                  <Button type='submit' disabled={isSubmitting}>
+                    {isSubmitting ? 'Creating...' : 'Create Database'}
+                  </Button>
+                </div>
+              )}
+            />
           </form>
         </DialogContent>
       </Dialog>

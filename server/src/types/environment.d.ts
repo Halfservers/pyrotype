@@ -1,19 +1,5 @@
-declare global {
-  namespace NodeJS {
-    interface ProcessEnv {
-      NODE_ENV?: 'development' | 'production' | 'test';
-      PORT?: string;
-      DATABASE_URL?: string;
-      REDIS_URL?: string;
-      SESSION_SECRET?: string;
-      JWT_SECRET?: string;
-      APP_URL?: string;
-      APP_VERSION?: string;
-      MAIL_HOST?: string;
-      MAIL_PORT?: string;
-      MAIL_FROM?: string;
-    }
-  }
-}
+// Cloudflare Workers global type augmentations
+// Bindings are defined in Env (see env.ts) and accessed via c.env in Hono handlers.
+// This file is intentionally minimal — Workers don't use process.env.
 
-export {};
+export {}

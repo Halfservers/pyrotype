@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm } from '@tanstack/react-form';
 import { toast } from 'sonner';
 
 import {
@@ -15,7 +15,7 @@ import RotatePasswordButton from '@/components/server/databases/rotate-password-
 import { useFlash, usePermissions } from '@/lib/hooks';
 import { useServerStore } from '@/store/server';
 
-import { httpErrorToHuman } from '@/lib/api/http';
+import { httpErrorToHuman } from '@/lib/http';
 import { deleteServerDatabase, type ServerDatabase } from '@/lib/api/server/databases';
 
 interface Props {
@@ -44,31 +44,29 @@ const DatabaseRow = ({ database }: Props) => {
 
   const jdbcConnectionString = `jdbc:mysql://${database.username}${database.password ? `:${encodeURIComponent(database.password)}` : ''}@${database.connectionString}/${database.name}`;
 
-  const { register, handleSubmit, formState: { isSubmitting, isValid }, reset } = useForm({
+  const form = useForm({
     defaultValues: { confirm: '' },
-    mode: 'onChange',
+    onSubmit: async () => {
+      clearFlashes();
+      try {
+        await deleteServerDatabase(uuid, database.id);
+        form.reset();
+        setVisible(false);
+        setTimeout(() => removeDatabase(database.id), 150);
+      } catch (error) {
+        form.reset();
+        console.error(error);
+        addError({ key: 'database:delete', message: httpErrorToHuman(error) });
+      }
+    },
   });
-
-  const submit = async (_values: { confirm: string }) => {
-    clearFlashes();
-    try {
-      await deleteServerDatabase(uuid, database.id);
-      reset();
-      setVisible(false);
-      setTimeout(() => removeDatabase(database.id), 150);
-    } catch (error) {
-      reset();
-      console.error(error);
-      addError({ key: 'database:delete', message: httpErrorToHuman(error) });
-    }
-  };
 
   const expectedName = database.name.split('_', 2)[1] || database.name;
 
   return (
     <>
       {/* Delete confirmation modal */}
-      <Dialog open={visible} onOpenChange={(open) => { if (!open) { setVisible(false); reset(); } }}>
+      <Dialog open={visible} onOpenChange={(open) => { if (!open) { setVisible(false); form.reset(); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm database deletion</DialogTitle>
@@ -78,21 +76,33 @@ const DatabaseRow = ({ database }: Props) => {
               Deleting a database is a permanent action, it cannot be undone. This will permanently
               delete the <strong>{database.name}</strong> database and remove all its data.
             </p>
-            <form onSubmit={handleSubmit(submit)} className='mt-6 flex flex-col gap-4'>
-              <div>
-                <Label htmlFor='confirm_name'>Confirm Database Name</Label>
-                <Input
-                  id='confirm_name'
-                  {...register('confirm', {
-                    required: true,
-                    validate: (v) => v === expectedName || v === database.name,
-                  })}
-                />
-                <p className='text-xs text-zinc-400 mt-1'>Enter the database name to confirm deletion.</p>
-              </div>
-              <Button variant='destructive' type='submit' className='w-full' disabled={!isValid || isSubmitting}>
-                {isSubmitting ? 'Deleting...' : 'Delete Database'}
-              </Button>
+            <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }} className='mt-6 flex flex-col gap-4'>
+              <form.Field
+                name='confirm'
+                children={(field) => (
+                  <div>
+                    <Label htmlFor='confirm_name'>Confirm Database Name</Label>
+                    <Input
+                      id='confirm_name'
+                      value={field.state.value}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                    />
+                    <p className='text-xs text-zinc-400 mt-1'>Enter the database name to confirm deletion.</p>
+                  </div>
+                )}
+              />
+              <form.Subscribe
+                selector={(s) => ({ isSubmitting: s.isSubmitting, confirm: s.values.confirm })}
+                children={({ isSubmitting, confirm }) => {
+                  const isValid = confirm === expectedName || confirm === database.name;
+                  return (
+                    <Button variant='destructive' type='submit' className='w-full' disabled={!isValid || isSubmitting}>
+                      {isSubmitting ? 'Deleting...' : 'Delete Database'}
+                    </Button>
+                  );
+                }}
+              />
             </form>
           </div>
         </DialogContent>

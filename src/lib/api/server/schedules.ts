@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 
 export interface Schedule {
@@ -68,22 +68,19 @@ const rawDataToServerSchedule = (data: any): Schedule => ({
 });
 
 export const getServerSchedules = async (uuid: string): Promise<Schedule[]> => {
-  const { data } = await http.get(
+  const data: any = await api.get(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/schedules`,
-    { params: { include: ['tasks'] } },
+    { include: 'tasks' },
   );
   return (data.data || []).map((row: any) => rawDataToServerSchedule(row.attributes));
 };
 
-export const getServerSchedule = (uuid: string, schedule: number): Promise<Schedule> => {
-  return new Promise((resolve, reject) => {
-    http
-      .get(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/schedules/${schedule}`, {
-        params: { include: ['tasks'] },
-      })
-      .then(({ data }) => resolve(rawDataToServerSchedule(data.attributes)))
-      .catch(reject);
-  });
+export const getServerSchedule = async (uuid: string, schedule: number): Promise<Schedule> => {
+  const data: any = await api.get(
+    `/api/client/servers/${getGlobalDaemonType()}/${uuid}/schedules/${schedule}`,
+    { include: 'tasks' },
+  );
+  return rawDataToServerSchedule(data.attributes);
 };
 
 type ScheduleData = Pick<Schedule, 'cron' | 'name' | 'onlyWhenOnline' | 'isActive'> & {
@@ -94,7 +91,7 @@ export const createOrUpdateSchedule = async (
   uuid: string,
   schedule: ScheduleData,
 ): Promise<Schedule> => {
-  const { data } = await http.post(
+  const data: any = await api.post(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/schedules${schedule.id ? `/${schedule.id}` : ''}`,
     {
       is_active: schedule.isActive,
@@ -123,7 +120,7 @@ export const createOrUpdateScheduleTask = async (
   task: number | undefined,
   taskData: TaskData,
 ): Promise<ScheduleTask> => {
-  const { data: response } = await http.post(
+  const data: any = await api.post(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/schedules/${schedule}/tasks${task ? `/${task}` : ''}`,
     {
       action: taskData.action,
@@ -132,38 +129,28 @@ export const createOrUpdateScheduleTask = async (
       time_offset: taskData.timeOffset,
     },
   );
-  return rawDataToServerTask(response.attributes);
+  return rawDataToServerTask(data.attributes);
 };
 
-export const deleteSchedule = (uuid: string, schedule: number): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .delete(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/schedules/${schedule}`)
-      .then(() => resolve())
-      .catch(reject);
-  });
+export const deleteSchedule = async (uuid: string, schedule: number): Promise<void> => {
+  await api.delete(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/schedules/${schedule}`);
 };
 
-export const deleteScheduleTask = (
+export const deleteScheduleTask = async (
   uuid: string,
   scheduleId: number,
   taskId: number,
 ): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .delete(
-        `/api/client/${getGlobalDaemonType()}/servers/${uuid}/schedules/${scheduleId}/tasks/${taskId}`,
-      )
-      .then(() => resolve())
-      .catch(reject);
-  });
+  await api.delete(
+    `/api/client/${getGlobalDaemonType()}/servers/${uuid}/schedules/${scheduleId}/tasks/${taskId}`,
+  );
 };
 
 export const triggerScheduleExecution = async (
   server: string,
   schedule: number,
 ): Promise<void> => {
-  await http.post(
+  await api.post(
     `/api/client/servers/${getGlobalDaemonType()}/${server}/schedules/${schedule}/execute`,
   );
 };

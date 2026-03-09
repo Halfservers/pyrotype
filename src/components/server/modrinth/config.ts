@@ -1,4 +1,3 @@
-import axios, { type AxiosError, type AxiosRequestConfig } from 'axios';
 import React, { type ReactNode, createContext, useContext, useState } from 'react';
 
 // ==================== TYPES ====================
@@ -59,8 +58,14 @@ let cachedAppVersion = 'unknown';
 
 const fetchVersion = async () => {
   try {
-    const response = await axios.get('/api/client/version');
-    cachedAppVersion = response.data.version || 'unknown';
+    const res = await fetch('/api/client/version', {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      cachedAppVersion = data.version || 'unknown';
+    }
   } catch {
     console.error('Error fetching app version');
   }
@@ -174,58 +179,71 @@ class EnhancedError extends Error {
   }
 }
 
-export const ModrinthService = {
-  api: axios.create({
-    baseURL: MODRINTH_CONFIG.apiBaseUrl,
-    timeout: MODRINTH_CONFIG.defaultTimeout,
-  }),
+async function modrinthFetch<T>(path: string, options: RequestInit & { params?: Record<string, string> } = {}): Promise<{ data: T; status: number }> {
+  const { params, ...fetchOptions } = options;
+  let url = MODRINTH_CONFIG.apiBaseUrl + path;
+  if (params) {
+    const qs = new URLSearchParams(params).toString();
+    if (qs) url += '?' + qs;
+  }
 
-  async init(appVersion: string): Promise<boolean> {
+  const headers = {
+    ...MODRINTH_CONFIG.getHeaders(cachedAppVersion),
+    ...(fetchOptions.headers || {}),
+  };
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= MODRINTH_CONFIG.maxRetries; attempt++) {
     try {
-      this.api.interceptors.request.use((config) => {
-        config.headers = {
-          ...config.headers,
-          ...MODRINTH_CONFIG.getHeaders(appVersion),
-        } as any;
-        return config;
+      const res = await fetch(url, {
+        ...fetchOptions,
+        headers,
+        signal: AbortSignal.timeout(MODRINTH_CONFIG.defaultTimeout),
       });
 
-      this.api.interceptors.response.use(undefined, async (error: AxiosError) => {
-        const config = error.config as AxiosRequestConfig & { _retryCount?: number };
-        config._retryCount = config._retryCount || 0;
-
-        if (error.response?.status === 429 || (error.response?.status && error.response.status >= 500)) {
-          if (config._retryCount < MODRINTH_CONFIG.maxRetries) {
-            config._retryCount++;
-            const delay = Math.pow(2, config._retryCount) * 1000;
-            await new Promise((resolve) => setTimeout(resolve, delay));
-            return this.api(config);
-          }
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt < MODRINTH_CONFIG.maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000));
+          continue;
         }
-        return Promise.reject(error);
-      });
+      }
 
-      return true;
+      if (!res.ok) {
+        throw new Error(`Modrinth API error: ${res.status} ${res.statusText}`);
+      }
+
+      const data = await res.json();
+      return { data, status: res.status };
     } catch (error) {
-      console.error('ModrinthService initialization failed:', error);
-      return false;
+      lastError = error;
+      if (attempt < MODRINTH_CONFIG.maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000));
+        continue;
+      }
     }
+  }
+  throw lastError;
+}
+
+export const ModrinthService = {
+  async init(_appVersion: string): Promise<boolean> {
+    return true;
   },
 
   async fetchLoaders(): Promise<ApiResponse<ModLoader[]>> {
     try {
-      const response = await this.api.get('/tag/loader');
-      const loaders = response.data.map((loader: any) => ({
+      const { data, status } = await modrinthFetch<any[]>('/tag/loader');
+      const loaders = data.map((loader: any) => ({
         id: loader.name.toLowerCase(),
         name: loader.name,
         icon: loader.icon_url,
         supportedEnvironments: loader.supported_project_types.includes('mod')
-          ? ['client', 'server']
-          : ['server'],
+          ? ['client', 'server'] as ('client' | 'server')[]
+          : ['server'] as ('client' | 'server')[],
         supportedProjectTypes: loader.supported_project_types,
       }));
 
-      return { data: loaders, status: response.status, timestamp: Date.now() };
+      return { data: loaders, status, timestamp: Date.now() };
     } catch (error) {
       throw new EnhancedError('Failed to fetch loaders', error);
     }
@@ -233,8 +251,8 @@ export const ModrinthService = {
 
   async fetchGameVersions(): Promise<ApiResponse<GameVersion[]>> {
     try {
-      const response = await this.api.get('/tag/game_version');
-      const versions = response.data.map((version: any) => ({
+      const { data, status } = await modrinthFetch<any[]>('/tag/game_version');
+      const versions = data.map((version: any) => ({
         id: version.version,
         name: version.version,
         type: version.version_type,
@@ -242,7 +260,7 @@ export const ModrinthService = {
         isFeatured: version.featured,
       }));
 
-      return { data: versions, status: response.status, timestamp: Date.now() };
+      return { data: versions, status, timestamp: Date.now() };
     } catch (error) {
       throw new EnhancedError('Failed to fetch game versions', error);
     }
@@ -256,18 +274,18 @@ export const ModrinthService = {
     index?: 'relevance' | 'downloads' | 'updated' | 'newest';
   }): Promise<ApiResponse<Mod[]>> {
     try {
-      const processedParams: Record<string, any> = {
-        limit: params.limit?.toString() || '20',
+      const processedParams: Record<string, string> = {
+        limit: String(params.limit || 20),
       };
 
       if (params.query) processedParams.query = params.query;
       if (params.facets && params.facets.length > 0) processedParams.facets = JSON.stringify(params.facets);
-      if (params.offset) processedParams.offset = params.offset.toString();
+      if (params.offset) processedParams.offset = String(params.offset);
       if (params.index) processedParams.index = params.index;
 
-      const response = await this.api.get('/search', { params: processedParams });
+      const { data, status } = await modrinthFetch<any>('/search', { params: processedParams });
 
-      const mods = response.data.hits.map((mod: any) => ({
+      const mods = data.hits.map((mod: any) => ({
         id: mod.project_id,
         project_id: mod.project_id,
         project_type: mod.project_type,
@@ -292,7 +310,7 @@ export const ModrinthService = {
         color: mod.color,
       }));
 
-      return { data: mods, status: response.status, timestamp: Date.now() };
+      return { data: mods, status, timestamp: Date.now() };
     } catch (error) {
       throw new EnhancedError('Failed to search mods', error);
     }
@@ -301,8 +319,8 @@ export const ModrinthService = {
   async getModDetails(modId: string): Promise<ApiResponse<ModDetail>> {
     try {
       const [project, versions] = await Promise.all([
-        this.api.get(`/project/${modId}`),
-        this.api.get(`/project/${modId}/version`),
+        modrinthFetch<any>(`/project/${modId}`),
+        modrinthFetch<any>(`/project/${modId}/version`),
       ]);
 
       return {

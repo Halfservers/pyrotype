@@ -1,23 +1,15 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 import { z } from 'zod'
 
-import { resetPasswordSchema, type ResetPasswordData } from '@/lib/validators/auth'
+import { resetPasswordSchema } from '@/lib/validators/auth'
 import { performPasswordReset } from '@/lib/api/auth/reset-password'
-import { httpErrorToHuman } from '@/lib/api/http'
+import { httpErrorToHuman } from '@/lib/http'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
+import { Label } from '@/components/ui/label'
 
 const searchSchema = z.object({
   email: z.string().optional(),
@@ -33,28 +25,32 @@ function ResetPasswordPage() {
   const { email } = Route.useSearch()
   const [error, setError] = useState<string | null>(null)
 
-  const form = useForm<ResetPasswordData>({
-    resolver: zodResolver(resetPasswordSchema),
+  const form = useForm({
     defaultValues: {
       password: '',
       passwordConfirmation: '',
     },
+    onSubmit: async ({ value }) => {
+      setError(null)
+
+      try {
+        await performPasswordReset(email || '', {
+          token,
+          password: value.password,
+          passwordConfirmation: value.passwordConfirmation,
+        })
+        window.location.href = '/'
+      } catch (err: unknown) {
+        setError(httpErrorToHuman(err))
+      }
+    },
+    validators: {
+      onSubmit: ({ value }) => {
+        const result = resetPasswordSchema.safeParse(value)
+        return result.success ? undefined : result.error.issues.map((i) => i.message).join(', ')
+      },
+    },
   })
-
-  const onSubmit = async (values: ResetPasswordData) => {
-    setError(null)
-
-    try {
-      await performPasswordReset(email || '', {
-        token,
-        password: values.password,
-        passwordConfirmation: values.passwordConfirmation,
-      })
-      window.location.href = '/'
-    } catch (err: any) {
-      setError(httpErrorToHuman(err))
-    }
-  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a]">
@@ -65,91 +61,110 @@ function ResetPasswordPage() {
           </div>
         )}
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="w-full flex flex-col">
-            <Link to="/">
-              <div className="flex h-12 mb-4 items-center w-full">
-                <span className="text-2xl font-bold text-white tracking-tight">
-                  Pyrotype
-                </span>
-              </div>
-            </Link>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            form.handleSubmit()
+          }}
+          className="w-full flex flex-col"
+        >
+          <Link to="/">
+            <div className="flex h-12 mb-4 items-center w-full">
+              <span className="text-2xl font-bold text-white tracking-tight">
+                Pyrotype
+              </span>
+            </div>
+          </Link>
 
-            <div aria-hidden className="my-8 bg-[#ffffff33] min-h-[1px]" />
+          <div aria-hidden className="my-8 bg-[#ffffff33] min-h-[1px]" />
 
-            {email && (
-              <div className="text-center mb-6">
+          {email && (
+            <div className="text-center mb-6">
+              <Input
+                className="text-center bg-[#ffffff09] border-[#ffffff12] text-white"
+                value={email}
+                disabled
+              />
+            </div>
+          )}
+
+          <form.Field
+            name="password"
+            children={(field) => (
+              <div className="space-y-2 mt-6">
+                <Label htmlFor={field.name} className="text-zinc-300">
+                  New Password
+                </Label>
                 <Input
-                  className="text-center bg-[#ffffff09] border-[#ffffff12] text-white"
-                  value={email}
-                  disabled
+                  id={field.name}
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  type="password"
+                  className="bg-[#ffffff09] border-[#ffffff12] text-white"
                 />
+                <p className="text-xs text-zinc-500 mt-1">
+                  Passwords must be at least 8 characters in length.
+                </p>
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">
+                    {field.state.meta.errors.map(String).join(', ')}
+                  </p>
+                )}
               </div>
             )}
+          />
 
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem className="mt-6">
-                  <FormLabel className="text-zinc-300">New Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="password"
-                      disabled={form.formState.isSubmitting}
-                      className="bg-[#ffffff09] border-[#ffffff12] text-white"
-                    />
-                  </FormControl>
-                  <p className="text-xs text-zinc-500 mt-1">
-                    Passwords must be at least 8 characters in length.
+          <form.Field
+            name="passwordConfirmation"
+            children={(field) => (
+              <div className="space-y-2 mt-6">
+                <Label htmlFor={field.name} className="text-zinc-300">
+                  Confirm New Password
+                </Label>
+                <Input
+                  id={field.name}
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  type="password"
+                  className="bg-[#ffffff09] border-[#ffffff12] text-white"
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive">
+                    {field.state.meta.errors.map(String).join(', ')}
                   </p>
-                  <FormMessage />
-                </FormItem>
+                )}
+              </div>
+            )}
+          />
+
+          <div className="mt-6">
+            <form.Subscribe
+              selector={(s) => s.isSubmitting}
+              children={(isSubmitting) => (
+                <Button
+                  className="w-full mt-4 rounded-full bg-brand border-0 ring-0 outline-hidden capitalize font-bold text-sm py-2"
+                  type="submit"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 'Resetting...' : 'Reset Password'}
+                </Button>
               )}
             />
+          </div>
 
-            <FormField
-              control={form.control}
-              name="passwordConfirmation"
-              render={({ field }) => (
-                <FormItem className="mt-6">
-                  <FormLabel className="text-zinc-300">Confirm New Password</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type="password"
-                      disabled={form.formState.isSubmitting}
-                      className="bg-[#ffffff09] border-[#ffffff12] text-white"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <div aria-hidden className="my-8 bg-[#ffffff33] min-h-[1px]" />
 
-            <div className="mt-6">
-              <Button
-                className="w-full mt-4 rounded-full bg-brand border-0 ring-0 outline-hidden capitalize font-bold text-sm py-2"
-                type="submit"
-                disabled={form.formState.isSubmitting}
-              >
-                {form.formState.isSubmitting ? 'Resetting...' : 'Reset Password'}
-              </Button>
-            </div>
-
-            <div aria-hidden className="my-8 bg-[#ffffff33] min-h-[1px]" />
-
-            <div className="text-center w-full rounded-lg border-0 ring-0 outline-hidden capitalize font-bold text-sm py-2">
-              <Link
-                to="/auth/login"
-                className="block w-full text-center py-2.5 px-4 text-xs font-medium tracking-wide uppercase text-white hover:text-white/80 transition-colors duration-200 border border-white/20 rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/30"
-              >
-                Return to Login
-              </Link>
-            </div>
-          </form>
-        </Form>
+          <div className="text-center w-full rounded-lg border-0 ring-0 outline-hidden capitalize font-bold text-sm py-2">
+            <Link
+              to="/auth/login"
+              className="block w-full text-center py-2.5 px-4 text-xs font-medium tracking-wide uppercase text-white hover:text-white/80 transition-colors duration-200 border border-white/20 rounded-full hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/30"
+            >
+              Return to Login
+            </Link>
+          </div>
+        </form>
       </div>
     </div>
   )

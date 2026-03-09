@@ -1,135 +1,222 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import type { TestAgent } from 'supertest';
-import { createTestApp, createAuthenticatedAgent, request } from '../helpers/test-app';
+import { describe, it, expect, vi } from 'vitest'
+import {
+  createTestHono,
+  createMockPrisma,
+  jsonRequest,
+  MOCK_USER,
+} from '../helpers/test-app'
+import * as apiKeyController from '../../src/controllers/client/apiKeyController'
+import { onError } from '../../src/middleware/errorHandler'
+
+// Mock crypto utilities
+vi.mock('../../src/utils/crypto', () => ({
+  verifyPassword: vi.fn(async () => true),
+  hashPassword: vi.fn(async (p: string) => `hashed:${p}`),
+}))
+
+// Mock API key generation helpers
+vi.mock('../../src/services/auth/apiKey', () => ({
+  generateApiKeyIdentifier: vi.fn(() => 'mock-identifier'),
+  generateApiKeyToken: vi.fn(async () => ({
+    plain: 'mock-plain-token',
+    hashed: 'mock-hashed-token',
+  })),
+}))
+
+function buildApp(prisma?: ReturnType<typeof createMockPrisma>) {
+  const ctx = createTestHono({ user: MOCK_USER, prisma })
+  ctx.app.get('/account/api-keys', apiKeyController.index)
+  ctx.app.post('/account/api-keys', apiKeyController.store)
+  ctx.app.delete('/account/api-keys/:identifier', apiKeyController.deleteKey)
+  ctx.app.onError(onError)
+  return ctx
+}
+
+// ---------------------------------------------------------------------------
+// GET /account/api-keys
+// ---------------------------------------------------------------------------
 
 describe('Client API Key Endpoints', () => {
-  let app: ReturnType<typeof createTestApp>;
-  let agent: TestAgent;
+  describe('GET /account/api-keys', () => {
+    it('should return a list of API keys', async () => {
+      const prisma = createMockPrisma()
+      const mockKey = {
+        id: 1,
+        identifier: 'abc123',
+        memo: 'test key',
+        allowedIps: ['127.0.0.1'],
+        lastUsedAt: new Date('2025-06-01'),
+        createdAt: new Date('2025-01-01'),
+      }
+      prisma.apiKey.findMany.mockResolvedValue([mockKey])
+      const { app } = buildApp(prisma)
 
-  beforeAll(async () => {
-    app = createTestApp();
-    const auth = await createAuthenticatedAgent();
-    agent = auth.agent;
-  });
+      const res = await app.request('/account/api-keys')
 
-  describe('GET /api/client/account/api-keys', () => {
-    it('should return 401 when unauthenticated', async () => {
-      const res = await request(app).get('/api/client/account/api-keys');
-      expect(res.status).toBe(401);
-    });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.object).toBe('list')
+      expect(body.data).toHaveLength(1)
+      expect(body.data[0].object).toBe('api_key')
+      expect(body.data[0].attributes.identifier).toBe('abc123')
+      expect(body.data[0].attributes.description).toBe('test key')
+      expect(body.data[0].attributes.allowed_ips).toEqual(['127.0.0.1'])
+      expect(body.data[0].attributes.last_used_at).toBe('2025-06-01T00:00:00.000Z')
+      expect(body.data[0].attributes.created_at).toBe('2025-01-01T00:00:00.000Z')
+    })
 
-    it('should return 200 with key list', async () => {
-      const res = await agent.get('/api/client/account/api-keys');
+    it('should return an empty list when no keys exist', async () => {
+      const { app } = buildApp()
+      const res = await app.request('/account/api-keys')
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('list');
-      expect(Array.isArray(res.body.data)).toBe(true);
-    });
-  });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.object).toBe('list')
+      expect(body.data).toHaveLength(0)
+    })
 
-  describe('POST /api/client/account/api-keys', () => {
-    it('should return 401 when unauthenticated', async () => {
-      const res = await request(app)
-        .post('/api/client/account/api-keys')
-        .send({ description: 'Test key' });
-      expect(res.status).toBe(401);
-    });
+    it('should filter keys by userId and keyType', async () => {
+      const prisma = createMockPrisma()
+      prisma.apiKey.findMany.mockResolvedValue([])
+      const { app } = buildApp(prisma)
 
-    it('should create an API key and return secret token', async () => {
-      const res = await agent
-        .post('/api/client/account/api-keys')
-        .send({ description: 'Test API key' });
+      await app.request('/account/api-keys')
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('api_key');
-      expect(res.body.attributes).toBeDefined();
-      expect(res.body.attributes).toHaveProperty('identifier');
-      expect(res.body.attributes).toHaveProperty('description');
-      expect(res.body.attributes.description).toBe('Test API key');
-      expect(res.body.attributes).toHaveProperty('allowed_ips');
-      expect(res.body.attributes).toHaveProperty('created_at');
-      expect(res.body.meta).toBeDefined();
-      expect(res.body.meta).toHaveProperty('secret_token');
-      expect(typeof res.body.meta.secret_token).toBe('string');
-      expect(res.body.meta.secret_token.length).toBeGreaterThan(0);
-    });
+      expect(prisma.apiKey.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: MOCK_USER.id, keyType: 1 },
+        }),
+      )
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // POST /account/api-keys
+  // -------------------------------------------------------------------------
+
+  describe('POST /account/api-keys', () => {
+    it('should create a new API key and return the secret token', async () => {
+      const prisma = createMockPrisma()
+      prisma.apiKey.count.mockResolvedValue(0)
+      prisma.apiKey.create.mockResolvedValue({
+        id: 1,
+        identifier: 'mock-identifier',
+        memo: 'my key',
+        allowedIps: [],
+        lastUsedAt: null,
+        createdAt: new Date('2025-01-01'),
+      })
+      const { app } = buildApp(prisma)
+
+      const res = await jsonRequest(app, 'POST', '/account/api-keys', {
+        description: 'my key',
+      })
+
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.object).toBe('api_key')
+      expect(body.attributes.identifier).toBe('mock-identifier')
+      expect(body.attributes.description).toBe('my key')
+      expect(body.meta.secret_token).toBe('mock-plain-token')
+    })
 
     it('should create API key with allowed_ips', async () => {
-      const res = await agent
-        .post('/api/client/account/api-keys')
-        .send({ description: 'IP-restricted key', allowed_ips: ['127.0.0.1', '10.0.0.1'] });
+      const prisma = createMockPrisma()
+      prisma.apiKey.count.mockResolvedValue(0)
+      prisma.apiKey.create.mockResolvedValue({
+        id: 1,
+        identifier: 'mock-identifier',
+        memo: 'restricted',
+        allowedIps: ['127.0.0.1', '10.0.0.1'],
+        lastUsedAt: null,
+        createdAt: new Date('2025-01-01'),
+      })
+      const { app } = buildApp(prisma)
 
-      expect(res.status).toBe(200);
-      expect(res.body.attributes.allowed_ips).toEqual(['127.0.0.1', '10.0.0.1']);
-    });
+      const res = await jsonRequest(app, 'POST', '/account/api-keys', {
+        description: 'restricted',
+        allowed_ips: ['127.0.0.1', '10.0.0.1'],
+      })
+
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.attributes.allowed_ips).toEqual(['127.0.0.1', '10.0.0.1'])
+    })
 
     it('should create API key without description', async () => {
-      const res = await agent
-        .post('/api/client/account/api-keys')
-        .send({});
+      const prisma = createMockPrisma()
+      prisma.apiKey.count.mockResolvedValue(0)
+      prisma.apiKey.create.mockResolvedValue({
+        id: 1,
+        identifier: 'mock-identifier',
+        memo: null,
+        allowedIps: [],
+        lastUsedAt: null,
+        createdAt: new Date('2025-01-01'),
+      })
+      const { app } = buildApp(prisma)
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('api_key');
-      expect(res.body.meta).toHaveProperty('secret_token');
-    });
-  });
+      const res = await jsonRequest(app, 'POST', '/account/api-keys', {})
 
-  describe('DELETE /api/client/account/api-keys/:identifier', () => {
-    it('should return 401 when unauthenticated', async () => {
-      const res = await request(app).delete('/api/client/account/api-keys/fake-identifier');
-      expect(res.status).toBe(401);
-    });
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.object).toBe('api_key')
+      expect(body.meta.secret_token).toBe('mock-plain-token')
+    })
 
-    it('should delete an existing API key', async () => {
-      // Create a key first
-      const createRes = await agent
-        .post('/api/client/account/api-keys')
-        .send({ description: 'Key to delete' });
+    it('should return 400 when the user has reached the 25-key limit', async () => {
+      const prisma = createMockPrisma()
+      prisma.apiKey.count.mockResolvedValue(25)
+      const { app } = buildApp(prisma)
 
-      expect(createRes.status).toBe(200);
-      const identifier = createRes.body.attributes.identifier;
+      const res = await jsonRequest(app, 'POST', '/account/api-keys', {
+        description: 'one too many',
+      })
 
-      // Delete it
-      const deleteRes = await agent.delete(`/api/client/account/api-keys/${identifier}`);
-      expect(deleteRes.status).toBe(204);
+      expect(res.status).toBe(400)
+    })
+  })
 
-      // Verify it's gone
-      const listRes = await agent.get('/api/client/account/api-keys');
-      const identifiers = listRes.body.data.map((k: any) => k.attributes.identifier);
-      expect(identifiers).not.toContain(identifier);
-    });
+  // -------------------------------------------------------------------------
+  // DELETE /account/api-keys/:identifier
+  // -------------------------------------------------------------------------
 
-    it('should return 404 for non-existent identifier', async () => {
-      const res = await agent.delete('/api/client/account/api-keys/nonexistent123456');
-      expect(res.status).toBe(404);
-    });
-  });
+  describe('DELETE /account/api-keys/:identifier', () => {
+    it('should return 204 when the key exists and belongs to the user', async () => {
+      const prisma = createMockPrisma()
+      prisma.apiKey.findFirst.mockResolvedValue({ id: 10 })
+      const { app } = buildApp(prisma)
 
-  describe('API key CRUD lifecycle', () => {
-    it('should support full create-list-delete cycle', async () => {
-      // List initial keys
-      const initialRes = await agent.get('/api/client/account/api-keys');
-      expect(initialRes.status).toBe(200);
-      const initialCount = initialRes.body.data.length;
+      const res = await app.request('/account/api-keys/abc123', { method: 'DELETE' })
 
-      // Create a key
-      const createRes = await agent
-        .post('/api/client/account/api-keys')
-        .send({ description: 'Lifecycle test key' });
-      expect(createRes.status).toBe(200);
-      const identifier = createRes.body.attributes.identifier;
+      expect(res.status).toBe(204)
+      expect(prisma.apiKey.delete).toHaveBeenCalledWith({ where: { id: 10 } })
+    })
 
-      // List should have one more
-      const afterCreateRes = await agent.get('/api/client/account/api-keys');
-      expect(afterCreateRes.body.data.length).toBe(initialCount + 1);
+    it('should return 404 when the key does not exist', async () => {
+      const prisma = createMockPrisma()
+      prisma.apiKey.findFirst.mockResolvedValue(null)
+      const { app } = buildApp(prisma)
 
-      // Delete the key
-      const deleteRes = await agent.delete(`/api/client/account/api-keys/${identifier}`);
-      expect(deleteRes.status).toBe(204);
+      const res = await app.request('/account/api-keys/nonexistent', { method: 'DELETE' })
 
-      // List should be back to initial count
-      const afterDeleteRes = await agent.get('/api/client/account/api-keys');
-      expect(afterDeleteRes.body.data.length).toBe(initialCount);
-    });
-  });
-});
+      expect(res.status).toBe(404)
+    })
+
+    it('should query by userId, keyType, and identifier', async () => {
+      const prisma = createMockPrisma()
+      prisma.apiKey.findFirst.mockResolvedValue({ id: 5 })
+      const { app } = buildApp(prisma)
+
+      await app.request('/account/api-keys/test-id', { method: 'DELETE' })
+
+      expect(prisma.apiKey.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: MOCK_USER.id,
+          keyType: 1,
+          identifier: 'test-id',
+        },
+      })
+    })
+  })
+})

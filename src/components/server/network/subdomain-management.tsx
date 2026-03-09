@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { useForm } from '@tanstack/react-form';
 import { LinkIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
 import { useServerStore } from '@/store/server';
 import { useSetSubdomainMutation, useDeleteSubdomainMutation } from '@/lib/queries';
 import { useFlashKey } from '@/lib/hooks';
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 
 interface SubdomainInfo {
@@ -28,19 +26,10 @@ interface SubdomainInfo {
   } | null;
 }
 
-const subdomainSchema = z.object({
-  subdomain: z
-    .string()
-    .min(1, 'A subdomain name is required.')
-    .max(63, 'Subdomain cannot exceed 63 characters.')
-    .regex(
-      /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i,
-      'Subdomain can only contain lowercase letters, numbers, and hyphens.',
-    ),
-  domain_id: z.string().min(1, 'A domain must be selected.'),
-});
-
-type SubdomainFormValues = z.infer<typeof subdomainSchema>;
+interface SubdomainFormValues {
+  subdomain: string;
+  domain_id: string;
+}
 
 const SubdomainManagement = () => {
   const [subdomainInfo, setSubdomainInfo] = useState<SubdomainInfo | null>(null);
@@ -60,9 +49,11 @@ const SubdomainManagement = () => {
 
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const form = useForm<SubdomainFormValues>({
-    resolver: zodResolver(subdomainSchema),
+  const form = useForm({
     defaultValues: { subdomain: '', domain_id: '' },
+    onSubmit: async ({ value }) => {
+      await onSubmit(value);
+    },
   });
 
   useEffect(() => {
@@ -76,15 +67,12 @@ const SubdomainManagement = () => {
     try {
       clearFlashes();
       const daemonType = getGlobalDaemonType();
-      const { data } = await http.get(`/api/client/servers/${daemonType}/${serverId}/network/subdomain`);
-      const info = data as SubdomainInfo;
+      const info = await api.get<SubdomainInfo>(`/api/client/servers/${daemonType}/${serverId}/network/subdomain`);
       setSubdomainInfo(info);
 
       const defaultDomain = info.available_domains?.find((d) => d.is_default) || info.available_domains?.[0];
-      form.reset({
-        subdomain: info.current_subdomain?.attributes?.subdomain || '',
-        domain_id: info.current_subdomain?.attributes?.domain_id?.toString() || defaultDomain?.id.toString() || '',
-      });
+      form.setFieldValue('subdomain', info.current_subdomain?.attributes?.subdomain || '');
+      form.setFieldValue('domain_id', info.current_subdomain?.attributes?.domain_id?.toString() || defaultDomain?.id.toString() || '');
     } catch (error) {
       clearAndAddHttpError(error);
     }
@@ -109,7 +97,7 @@ const SubdomainManagement = () => {
       try {
         setCheckingAvailability(true);
         const daemonType = getGlobalDaemonType();
-        const { data } = await http.post(
+        const data = await api.post<{ available: boolean; message: string }>(
           `/api/client/servers/${daemonType}/${serverId}/network/subdomain/check`,
           { subdomain: subdomain.trim(), domain_id: parseInt(domainId) },
         );
@@ -234,67 +222,72 @@ const SubdomainManagement = () => {
           </div>
         </div>
       ) : (
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
+        <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }} className='space-y-6'>
             <div className='space-y-4'>
-              <FormField
-                control={form.control}
-                name='subdomain'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Subdomain</FormLabel>
-                    <div className='flex items-center border border-[#ffffff15] rounded-lg overflow-hidden'>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          placeholder='myserver'
-                          className='flex-1 border-0 rounded-none focus-visible:ring-0'
-                          onChange={(e) => {
-                            const value = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
-                            field.onChange(value);
-                            const domainId = form.getValues('domain_id');
-                            if (domainId && value.trim()) {
-                              debouncedCheckAvailability(value, domainId);
-                            } else {
-                              setAvailabilityStatus(null);
+              <div className='space-y-2'>
+                <Label>Subdomain</Label>
+                <div className='flex items-center border border-[#ffffff15] rounded-lg overflow-hidden'>
+                  <form.Field
+                    name='subdomain'
+                    children={(field) => (
+                      <Input
+                        value={field.state.value}
+                        placeholder='myserver'
+                        className='flex-1 border-0 rounded-none focus-visible:ring-0'
+                        onChange={(e) => {
+                          const value = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                          field.handleChange(value);
+                          const domainId = form.getFieldValue('domain_id');
+                          if (domainId && value.trim()) {
+                            debouncedCheckAvailability(value, domainId);
+                          } else {
+                            setAvailabilityStatus(null);
+                          }
+                        }}
+                        onBlur={field.handleBlur}
+                      />
+                    )}
+                  />
+                  <div className='border-l border-[#ffffff15]'>
+                    <form.Field
+                      name='domain_id'
+                      children={(domainField) => (
+                        <Select
+                          value={domainField.state.value}
+                          onValueChange={(value) => {
+                            domainField.handleChange(value);
+                            const subdomain = form.getFieldValue('subdomain');
+                            if (subdomain?.trim()) {
+                              debouncedCheckAvailability(subdomain, value);
                             }
                           }}
-                        />
-                      </FormControl>
-                      <div className='border-l border-[#ffffff15]'>
-                        <FormField
-                          control={form.control}
-                          name='domain_id'
-                          render={({ field: domainField }) => (
-                            <Select
-                              value={domainField.value}
-                              onValueChange={(value) => {
-                                domainField.onChange(value);
-                                const subdomain = form.getValues('subdomain');
-                                if (subdomain?.trim()) {
-                                  debouncedCheckAvailability(subdomain, value);
-                                }
-                              }}
-                            >
-                              <SelectTrigger className='min-w-[140px] border-0 rounded-none'>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {subdomainInfo.available_domains.map((domain) => (
-                                  <SelectItem key={domain.id} value={domain.id.toString()}>
-                                    .{domain.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                        />
-                      </div>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                        >
+                          <SelectTrigger className='min-w-[140px] border-0 rounded-none'>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {subdomainInfo.available_domains.map((domain) => (
+                              <SelectItem key={domain.id} value={domain.id.toString()}>
+                                .{domain.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    />
+                  </div>
+                </div>
+                <form.Field
+                  name='subdomain'
+                  children={(field) => (
+                    <>
+                      {field.state.meta.errors.length > 0 && (
+                        <p className='text-sm text-destructive'>{field.state.meta.errors.map(String).join(', ')}</p>
+                      )}
+                    </>
+                  )}
+                />
+              </div>
 
               {(checkingAvailability || availabilityStatus) && (
                 <div
@@ -336,26 +329,33 @@ const SubdomainManagement = () => {
                   Cancel
                 </Button>
               )}
-              <Button
-                type='submit'
-                size='sm'
-                disabled={
-                  form.formState.isSubmitting ||
-                  !form.formState.isValid ||
-                  (availabilityStatus?.checked === true && !availabilityStatus.available)
-                }
-              >
-                {isEditing
-                  ? form.formState.isSubmitting
-                    ? 'Saving...'
-                    : 'Save Changes'
-                  : form.formState.isSubmitting
-                    ? 'Creating...'
-                    : 'Create Subdomain'}
-              </Button>
+              <form.Subscribe
+                selector={(s) => ({ isSubmitting: s.isSubmitting, subdomain: s.values.subdomain, domain_id: s.values.domain_id })}
+                children={({ isSubmitting, subdomain, domain_id }) => {
+                  const isValid = subdomain.trim().length > 0 && domain_id.length > 0;
+                  return (
+                    <Button
+                      type='submit'
+                      size='sm'
+                      disabled={
+                        isSubmitting ||
+                        !isValid ||
+                        (availabilityStatus?.checked === true && !availabilityStatus.available)
+                      }
+                    >
+                      {isEditing
+                        ? isSubmitting
+                          ? 'Saving...'
+                          : 'Save Changes'
+                        : isSubmitting
+                          ? 'Creating...'
+                          : 'Create Subdomain'}
+                    </Button>
+                  );
+                }}
+              />
             </div>
           </form>
-        </Form>
       )}
     </div>
   );

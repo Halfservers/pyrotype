@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from '@tanstack/react-form'
 import { useState } from 'react'
 
 import { sshKeySchema, type SshKeyData } from '@/lib/validators/account'
@@ -12,6 +11,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
@@ -21,14 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
 
 export const Route = createFileRoute('/_authed/account/ssh' as any)({
   component: AccountSSHPage,
@@ -46,29 +38,33 @@ function AccountSSHPage() {
   const createSSHKey = useCreateSSHKeyMutation()
   const deleteSSHKey = useDeleteSSHKeyMutation()
 
-  const form = useForm<SshKeyData>({
-    resolver: zodResolver(sshKeySchema),
+  const form = useForm({
     defaultValues: { name: '', publicKey: '' },
+    onSubmit: async ({ value }) => {
+      setError(null)
+      try {
+        await createSSHKey.mutateAsync(value as SshKeyData)
+        form.reset()
+        setShowCreateModal(false)
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to add SSH key.')
+      }
+    },
+    validators: {
+      onSubmit: ({ value }) => {
+        const result = sshKeySchema.safeParse(value)
+        return result.success ? undefined : result.error.issues.map((i) => i.message).join(', ')
+      },
+    },
   })
-
-  const onCreateSubmit = async (values: SshKeyData) => {
-    setError(null)
-    try {
-      await createSSHKey.mutateAsync(values)
-      form.reset()
-      setShowCreateModal(false)
-    } catch (err: any) {
-      setError(err.message || 'Failed to add SSH key.')
-    }
-  }
 
   const onDelete = async () => {
     if (!deleteKey) return
     try {
       await deleteSSHKey.mutateAsync(deleteKey.fingerprint)
       setDeleteKey(null)
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete SSH key.')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to delete SSH key.')
     }
   }
 
@@ -153,48 +149,71 @@ function AccountSSHPage() {
               Add a new SSH key to your account for secure server access.
             </DialogDescription>
           </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onCreateSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>SSH Key Name</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="A name for this SSH key" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              form.handleSubmit()
+            }}
+            className="space-y-4"
+          >
+            <form.Field
+              name="name"
+              children={(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>SSH Key Name</Label>
+                  <Input
+                    id={field.name}
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                    placeholder="A name for this SSH key"
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive">
+                      {field.state.meta.errors.map(String).join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+            />
+            <form.Field
+              name="publicKey"
+              children={(field) => (
+                <div className="space-y-2">
+                  <Label htmlFor={field.name}>Public Key</Label>
+                  <Input
+                    id={field.name}
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                    placeholder="ssh-rsa AAAAB3..."
+                  />
+                  {field.state.meta.errors.length > 0 && (
+                    <p className="text-sm text-destructive">
+                      {field.state.meta.errors.map(String).join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+            />
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setShowCreateModal(false)}
+              >
+                Cancel
+              </Button>
+              <form.Subscribe
+                selector={(s) => s.isSubmitting}
+                children={(isSubmitting) => (
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? 'Adding...' : 'Add Key'}
+                  </Button>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="publicKey"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Public Key</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="ssh-rsa AAAAB3..." />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <DialogFooter>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={form.formState.isSubmitting}>
-                  {form.formState.isSubmitting ? 'Adding...' : 'Add Key'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </Form>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

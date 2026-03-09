@@ -1,8 +1,10 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../config/database';
+import type { Context } from 'hono';
+import type { Env, HonoVariables } from '../../types/env';
 import { fractalPaginated } from '../../utils/response';
 import { paginationSchema, getPaginationOffset } from '../../utils/pagination';
 import { SYSTEM_PERMISSIONS } from '../../constants/permissions';
+
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>;
 
 function transformServer(server: any, userId: number) {
   const node = server.node;
@@ -67,69 +69,68 @@ function transformServer(server: any, userId: number) {
   };
 }
 
-export async function index(req: Request, res: Response, next: NextFunction) {
-  try {
-    const user = req.user!;
-    const type = req.query.type as string | undefined;
-    const filter = req.query['filter[*]'] as string | undefined;
-    const pagination = paginationSchema.parse(req.query);
-    const { skip, take } = getPaginationOffset(pagination);
+export async function index(c: AppContext) {
+  const user = c.var.user!;
+  const prisma = c.var.prisma;
+  const type = c.req.query('type');
+  const filter = c.req.query('filter[*]');
+  const pagination = paginationSchema.parse({
+    page: c.req.query('page'),
+    per_page: c.req.query('per_page'),
+  });
+  const { skip, take } = getPaginationOffset(pagination);
 
-    const include = {
-      node: true,
-      egg: true,
-      allocations: true,
-    };
+  const include = {
+    node: true,
+    egg: true,
+    allocations: true,
+  };
 
-    let where: any = {};
+  let where: any = {};
 
-    if (type === 'admin' || type === 'admin-all') {
-      if (!user.rootAdmin) {
-        // Return empty set for non-admins requesting admin view
-        res.json(fractalPaginated('server', [], 0, pagination.page, pagination.per_page));
-        return;
-      }
-      if (type === 'admin') {
-        // Servers not directly accessible (owned or subuser) by the admin
-        const accessibleIds = await getAccessibleServerIds(user.id);
-        where = { id: { notIn: accessibleIds } };
-      }
-      // admin-all: no filter, all servers
-    } else if (type === 'owner') {
-      where = { ownerId: user.id };
-    } else {
-      // Default: all servers accessible to user (owner + subuser)
-      const accessibleIds = await getAccessibleServerIds(user.id);
-      where = { id: { in: accessibleIds } };
+  if (type === 'admin' || type === 'admin-all') {
+    if (!user.rootAdmin) {
+      // Return empty set for non-admins requesting admin view
+      return c.json(fractalPaginated('server', [], 0, pagination.page, pagination.per_page));
     }
-
-    if (filter) {
-      where = {
-        ...where,
-        OR: [
-          { name: { contains: filter } },
-          { uuid: { contains: filter } },
-          { uuidShort: { contains: filter } },
-          { description: { contains: filter } },
-          { externalId: { contains: filter } },
-        ],
-      };
+    if (type === 'admin') {
+      // Servers not directly accessible (owned or subuser) by the admin
+      const accessibleIds = await getAccessibleServerIds(prisma, user.id);
+      where = { id: { notIn: accessibleIds } };
     }
-
-    const [servers, total] = await Promise.all([
-      prisma.server.findMany({ where, include, skip, take, orderBy: { id: 'asc' } }),
-      prisma.server.count({ where }),
-    ]);
-
-    const data = servers.map((s) => transformServer(s, user.id));
-    res.json(fractalPaginated('server', data, total, pagination.page, pagination.per_page));
-  } catch (err) {
-    next(err);
+    // admin-all: no filter, all servers
+  } else if (type === 'owner') {
+    where = { ownerId: user.id };
+  } else {
+    // Default: all servers accessible to user (owner + subuser)
+    const accessibleIds = await getAccessibleServerIds(prisma, user.id);
+    where = { id: { in: accessibleIds } };
   }
+
+  if (filter) {
+    where = {
+      ...where,
+      OR: [
+        { name: { contains: filter } },
+        { uuid: { contains: filter } },
+        { uuidShort: { contains: filter } },
+        { description: { contains: filter } },
+        { externalId: { contains: filter } },
+      ],
+    };
+  }
+
+  const [servers, total] = await Promise.all([
+    prisma.server.findMany({ where, include, skip, take, orderBy: { id: 'asc' } }),
+    prisma.server.count({ where }),
+  ]);
+
+  const data = servers.map((s) => transformServer(s, user.id));
+  return c.json(fractalPaginated('server', data, total, pagination.page, pagination.per_page));
 }
 
-export async function permissions(_req: Request, res: Response) {
-  res.json({
+export async function permissions(c: AppContext) {
+  return c.json({
     object: 'system_permissions',
     attributes: {
       permissions: SYSTEM_PERMISSIONS,
@@ -137,7 +138,7 @@ export async function permissions(_req: Request, res: Response) {
   });
 }
 
-async function getAccessibleServerIds(userId: number): Promise<number[]> {
+async function getAccessibleServerIds(prisma: any, userId: number): Promise<number[]> {
   const [owned, subuser] = await Promise.all([
     prisma.server.findMany({ where: { ownerId: userId }, select: { id: true } }),
     prisma.subuser.findMany({ where: { userId }, select: { serverId: true } }),

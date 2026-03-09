@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 
 export interface PanelPermissions {
   [key: string]: {
@@ -7,11 +7,7 @@ export interface PanelPermissions {
   };
 }
 
-export default (): Promise<PanelPermissions> => {
-  return new Promise((resolve, reject) => {
-    http
-      .get('/api/client/permissions')
-      .then(({ data }) => resolve(data.attributes.permissions))
-      .catch(reject);
-  });
+export default async (): Promise<PanelPermissions> => {
+  const data: any = await api.get('/api/client/permissions');
+  return data.attributes.permissions;
 };

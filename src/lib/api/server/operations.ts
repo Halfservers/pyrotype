@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 
 export const OPERATION_STATUS = {
@@ -37,25 +37,21 @@ export const getOperationStatus = async (
   uuid: string,
   operationId: string,
 ): Promise<ServerOperation> => {
-  const { data } = await http.get(
+  return api.get<ServerOperation>(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/operations/${operationId}`,
   );
-  return data;
 };
 
 export const getServerOperations = async (
   uuid: string,
 ): Promise<{ operations: ServerOperation[] }> => {
-  const { data } = await http.get(
-    `/api/client/servers/${getGlobalDaemonType()}/${uuid}/operations`,
-  );
-  return data;
+  return api.get(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/operations`);
 };
 
 export type PowerAction = 'start' | 'stop' | 'restart' | 'kill';
 
 export const sendPowerAction = async (uuid: string, action: PowerAction): Promise<void> => {
-  await http.post(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/power`, {
+  await api.post(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/power`, {
     signal: action,
   });
 };

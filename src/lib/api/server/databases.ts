@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 
 export interface ServerDatabase {
@@ -21,59 +21,41 @@ const rawDataToServerDatabase = (data: any): ServerDatabase => ({
   maxConnections: data.max_connections ?? 0,
 });
 
-export const getServerDatabases = (
+export const getServerDatabases = async (
   uuid: string,
   includePassword = true,
 ): Promise<ServerDatabase[]> => {
   const daemonType = getGlobalDaemonType();
-  return new Promise((resolve, reject) => {
-    http
-      .get(`/api/client/servers/${daemonType}/${uuid}/databases`, {
-        params: includePassword ? { include: 'password' } : undefined,
-      })
-      .then((response) =>
-        resolve(
-          (response.data.data || []).map((item: any) => rawDataToServerDatabase(item.attributes)),
-        ),
-      )
-      .catch(reject);
-  });
+  const data: any = await api.get(
+    `/api/client/servers/${daemonType}/${uuid}/databases`,
+    includePassword ? { include: 'password' } : undefined,
+  );
+  return (data.data || []).map((item: any) => rawDataToServerDatabase(item.attributes));
 };
 
-export const createServerDatabase = (
+export const createServerDatabase = async (
   uuid: string,
   data: { connectionsFrom: string; databaseName: string },
 ): Promise<ServerDatabase> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post(
-        `/api/client/servers/${getGlobalDaemonType()}/${uuid}/databases`,
-        { database: data.databaseName, remote: data.connectionsFrom },
-        { params: { include: 'password' } },
-      )
-      .then((response) => resolve(rawDataToServerDatabase(response.data.attributes)))
-      .catch(reject);
-  });
+  const response: any = await api.post(
+    `/api/client/servers/${getGlobalDaemonType()}/${uuid}/databases`,
+    { database: data.databaseName, remote: data.connectionsFrom },
+    { params: { include: 'password' } },
+  );
+  return rawDataToServerDatabase(response.attributes);
 };
 
-export const deleteServerDatabase = (uuid: string, database: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .delete(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/databases/${database}`)
-      .then(() => resolve())
-      .catch(reject);
-  });
+export const deleteServerDatabase = async (uuid: string, database: string): Promise<void> => {
+  await api.delete(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/databases/${database}`);
 };
 
-export const rotateDatabasePassword = (
+export const rotateDatabasePassword = async (
   uuid: string,
   database: string,
 ): Promise<ServerDatabase> => {
   const daemonType = getGlobalDaemonType();
-  return new Promise((resolve, reject) => {
-    http
-      .post(`/api/client/${daemonType}/servers/${uuid}/databases/${database}/rotate-password`)
-      .then((response) => resolve(rawDataToServerDatabase(response.data.attributes)))
-      .catch(reject);
-  });
+  const data: any = await api.post(
+    `/api/client/${daemonType}/servers/${uuid}/databases/${database}/rotate-password`,
+  );
+  return rawDataToServerDatabase(data.attributes);
 };
