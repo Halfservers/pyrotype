@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@/generated/prisma'
 import { daemonRequest } from '../daemon/proxy'
 import { logger } from '../../config/logger'
 

@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@/generated/prisma'
 
 export async function processCleanupJob(
   data: { type: string },

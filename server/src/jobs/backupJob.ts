@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { PrismaClient } from '@/generated/prisma'
 import { daemonRequest, DaemonConnectionError } from '../services/daemon/proxy'
 import { logActivity } from '../services/activity'
 import { generateUuid } from '../utils/crypto'

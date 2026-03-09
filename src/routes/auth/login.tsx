@@ -51,7 +51,7 @@ function LoginPage() {
       }
 
       try {
-        const payload: LoginData = { ...value }
+        const payload: LoginData & Record<string, string> = { ...value }
         if (captchaConfig.enabled && captchaTokenRef.current) {
           const fieldName = CAPTCHA_FIELD_MAP[captchaConfig.provider] || 'cf-turnstile-response'
           payload[fieldName] = captchaTokenRef.current

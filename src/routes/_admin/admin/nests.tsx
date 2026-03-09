@@ -698,7 +698,7 @@ function AdminNestsPage() {
                   <div className="space-y-1">
                     <Label>Copy Script From</Label>
                     <Select
-                      value={eggForm.copy_script_from ?? ''}
+                      value={String(eggForm.copy_script_from ?? '')}
                       onValueChange={(v) => {
                         if (v === '_none') {
                           setEggForm((f) => ({ ...f, copy_script_from: null }))
