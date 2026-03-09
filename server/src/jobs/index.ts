@@ -25,13 +25,13 @@ export async function handleQueueBatch(
 
       switch (type) {
         case 'backup':
-          await processBackupJob(data as { serverId: number; backupId: number })
+          await processBackupJob(data as { serverId: number; backupId?: number }, prisma)
           break
         case 'cleanup':
-          await processCleanupJob(data as { type: string })
+          await processCleanupJob(data as { type: string }, prisma)
           break
         case 'schedule':
-          await processScheduleJob(data as { scheduleId: number })
+          await processScheduleJob(data as { scheduleId: number; taskId?: number }, prisma, env.JOB_QUEUE)
           break
         default:
           logger.warn(`Unknown job type: ${type}`)

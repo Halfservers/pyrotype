@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../../../types/env'
 import { NotFoundError, AppError } from '../../../../utils/errors'
 import { fractalItem, fractalList } from '../../../../utils/response'
+import { logActivity } from '../../../../services/activity'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -18,16 +19,46 @@ export async function listAllocations(c: AppContext) {
 
 export async function createAllocation(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
+  const prisma = c.var.prisma
 
-  // In production, check if server allows allocations and limit
-  // then use FindAssignableAllocationService to find a free allocation.
-  // TODO: Activity log: server:allocation.create
+  // Check allocation limit
+  if (server.allocationLimit !== null) {
+    const currentCount = await prisma.allocation.count({ where: { serverId: server.id } })
+    if (currentCount >= (server.allocationLimit ?? 0)) {
+      throw new AppError('This server has reached its allocation limit.', 400, 'BadRequest')
+    }
+  }
 
-  return c.json(fractalItem('allocation', {}))
+  // Find an unassigned allocation on the server's node
+  const freeAllocation = await prisma.allocation.findFirst({
+    where: { nodeId: server.nodeId, serverId: null },
+  })
+
+  if (!freeAllocation) {
+    throw new AppError('No allocations are available on this node.', 500, 'InternalError')
+  }
+
+  const updated = await prisma.allocation.update({
+    where: { id: freeAllocation.id },
+    data: { serverId: server.id },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:allocation.create',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { allocation_id: updated.id, ip: updated.ip, port: updated.port },
+  })
+
+  return c.json(fractalItem('allocation', updated))
 }
 
 export async function updateAllocation(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const allocationId = c.req.param('allocation')
   const { notes } = await c.req.json()
@@ -45,13 +76,21 @@ export async function updateAllocation(c: AppContext) {
     data: { notes: notes ?? null },
   })
 
-  // TODO: Activity log: server:allocation.notes
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:allocation.notes',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { allocation_id: allocation.id },
+  })
 
   return c.json(fractalItem('allocation', updated))
 }
 
 export async function setPrimaryAllocation(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const allocationId = c.req.param('allocation')
 
@@ -68,13 +107,21 @@ export async function setPrimaryAllocation(c: AppContext) {
     data: { allocationId: allocation.id },
   })
 
-  // TODO: Activity log: server:allocation.primary
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:allocation.primary',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { allocation_id: allocation.id },
+  })
 
   return c.json(fractalItem('allocation', allocation))
 }
 
 export async function deleteAllocation(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const allocationId = c.req.param('allocation')
 
@@ -95,7 +142,14 @@ export async function deleteAllocation(c: AppContext) {
     data: { notes: null, serverId: null },
   })
 
-  // TODO: Activity log: server:allocation.delete
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:allocation.delete',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { allocation_id: allocation.id },
+  })
 
   return c.body(null, 204)
 }

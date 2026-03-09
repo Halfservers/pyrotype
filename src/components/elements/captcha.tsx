@@ -1,143 +1,165 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react'
 
-interface CaptchaConfig {
-  enabled: boolean;
-  provider: 'hcaptcha' | 'turnstile';
-  siteKey: string;
-}
-
-let captchaConfig: CaptchaConfig | null = null;
-
-function getCaptchaConfig(): CaptchaConfig {
-  if (captchaConfig) return captchaConfig;
-
-  const meta = document.querySelector('meta[name="captcha-config"]');
-  if (meta) {
-    captchaConfig = JSON.parse(meta.getAttribute('content') || '{}');
-  }
-
-  return captchaConfig || { enabled: false, provider: 'turnstile', siteKey: '' };
+export interface CaptchaConfig {
+  enabled: boolean
+  provider: string
+  siteKey: string
 }
 
 interface CaptchaProps {
-  onSuccess?: (token: string) => void;
-  onError?: (error: unknown) => void;
-  onExpired?: () => void;
-  className?: string;
-  theme?: 'light' | 'dark' | 'auto';
-  size?: 'normal' | 'compact' | 'invisible' | 'flexible';
+  config: CaptchaConfig
+  onVerify: (token: string) => void
+  onError?: () => void
+  onExpired?: () => void
+  className?: string
+  theme?: 'light' | 'dark' | 'auto'
+  size?: 'normal' | 'compact' | 'invisible' | 'flexible'
+}
+
+const SCRIPT_URLS: Record<string, string> = {
+  turnstile: 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit',
+  hcaptcha: 'https://js.hcaptcha.com/1/api.js?render=explicit',
+  recaptcha: 'https://www.google.com/recaptcha/api.js?render=explicit',
+}
+
+function loadScript(src: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve()
+      return
+    }
+    const script = document.createElement('script')
+    script.src = src
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = () => reject(new Error(`Failed to load ${src}`))
+    document.head.appendChild(script)
+  })
 }
 
 export default function Captcha({
-  onSuccess,
+  config,
+  onVerify,
   onError,
   onExpired,
   className,
   theme = 'dark',
   size = 'flexible',
 }: CaptchaProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null)
+  const widgetRef = useRef<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const onSuccessRef = useRef(onSuccess);
-  const onErrorRef = useRef(onError);
-  const onExpiredRef = useRef(onExpired);
+  const onVerifyRef = useRef(onVerify)
+  const onErrorRef = useRef(onError)
+  const onExpiredRef = useRef(onExpired)
+  useEffect(() => {
+    onVerifyRef.current = onVerify
+    onErrorRef.current = onError
+    onExpiredRef.current = onExpired
+  })
 
   useEffect(() => {
-    onSuccessRef.current = onSuccess;
-    onErrorRef.current = onError;
-    onExpiredRef.current = onExpired;
-  });
+    if (!config.enabled || !config.siteKey || !config.provider || config.provider === 'none') return
 
-  useEffect(() => {
-    const config = getCaptchaConfig();
-    if (!config.enabled) return;
+    let mounted = true
+    setLoading(true)
+    setError(null)
 
-    let mounted = true;
-    setIsLoading(true);
-    setError(null);
-
-    const loadScript = (src: string) => {
-      return new Promise<void>((resolve, reject) => {
-        if (document.querySelector(`script[src="${src}"]`)) {
-          resolve();
-          return;
-        }
-        const script = document.createElement('script');
-        script.src = src;
-        script.async = true;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error(`Failed to load ${src}`));
-        document.head.appendChild(script);
-      });
-    };
+    const scriptUrl = SCRIPT_URLS[config.provider]
+    if (!scriptUrl) {
+      setError(`Unknown captcha provider: ${config.provider}`)
+      setLoading(false)
+      return
+    }
 
     const init = async () => {
       try {
+        await loadScript(scriptUrl)
+        if (!mounted || !containerRef.current) return
+
         if (config.provider === 'turnstile') {
-          await loadScript('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit');
-          if (!mounted || !containerRef.current) return;
-          const turnstile = (window as any).turnstile;
-          if (turnstile) {
-            turnstile.render(containerRef.current, {
-              sitekey: config.siteKey,
-              theme,
-              size,
-              callback: (token: string) => onSuccessRef.current?.(token),
-              'error-callback': (err: unknown) => {
-                setError('Captcha verification failed');
-                onErrorRef.current?.(err);
-              },
-              'expired-callback': () => {
-                setError('Captcha expired');
-                onExpiredRef.current?.();
-              },
-            });
-          }
-        } else {
-          await loadScript('https://js.hcaptcha.com/1/api.js?render=explicit');
-          if (!mounted || !containerRef.current) return;
-          const hcaptcha = (window as any).hcaptcha;
-          if (hcaptcha) {
-            hcaptcha.render(containerRef.current, {
-              sitekey: config.siteKey,
-              theme,
-              size,
-              callback: (token: string) => onSuccessRef.current?.(token),
-              'error-callback': (err: unknown) => {
-                setError('Captcha verification failed');
-                onErrorRef.current?.(err);
-              },
-              'expired-callback': () => {
-                setError('Captcha expired');
-                onExpiredRef.current?.();
-              },
-            });
-          }
+          const turnstile = (window as any).turnstile
+          if (!turnstile) return
+          widgetRef.current = turnstile.render(containerRef.current, {
+            sitekey: config.siteKey,
+            theme,
+            size,
+            callback: (token: string) => onVerifyRef.current(token),
+            'error-callback': () => {
+              setError('Captcha failed')
+              onErrorRef.current?.()
+            },
+            'expired-callback': () => {
+              setError('Captcha expired')
+              onExpiredRef.current?.()
+            },
+          })
+        } else if (config.provider === 'hcaptcha') {
+          const hcaptcha = (window as any).hcaptcha
+          if (!hcaptcha) return
+          widgetRef.current = hcaptcha.render(containerRef.current, {
+            sitekey: config.siteKey,
+            theme,
+            size,
+            callback: (token: string) => onVerifyRef.current(token),
+            'error-callback': () => {
+              setError('Captcha failed')
+              onErrorRef.current?.()
+            },
+            'expired-callback': () => {
+              setError('Captcha expired')
+              onExpiredRef.current?.()
+            },
+          })
+        } else if (config.provider === 'recaptcha') {
+          const grecaptcha = (window as any).grecaptcha
+          if (!grecaptcha) return
+          widgetRef.current = grecaptcha.render(containerRef.current, {
+            sitekey: config.siteKey,
+            theme,
+            size: size === 'flexible' ? 'normal' : size,
+            callback: (token: string) => onVerifyRef.current(token),
+            'error-callback': () => {
+              setError('Captcha failed')
+              onErrorRef.current?.()
+            },
+            'expired-callback': () => {
+              setError('Captcha expired')
+              onExpiredRef.current?.()
+            },
+          })
         }
       } catch {
-        if (mounted) setError('Failed to load captcha');
+        if (mounted) setError('Failed to load captcha')
       } finally {
-        if (mounted) setIsLoading(false);
+        if (mounted) setLoading(false)
       }
-    };
+    }
 
-    init();
+    init()
 
     return () => {
-      mounted = false;
-    };
-  }, [theme, size]);
+      mounted = false
+      // Cleanup widget
+      if (widgetRef.current != null) {
+        try {
+          if (config.provider === 'turnstile') (window as any).turnstile?.remove(widgetRef.current)
+          else if (config.provider === 'hcaptcha') (window as any).hcaptcha?.remove(widgetRef.current)
+        } catch { /* ignore */ }
+        widgetRef.current = null
+      }
+    }
+  }, [config.enabled, config.provider, config.siteKey, theme, size])
 
-  const config = getCaptchaConfig();
-  if (!config.enabled) return null;
+  if (!config.enabled) return null
 
   return (
     <div className={className}>
       <div ref={containerRef} />
-      {isLoading && <div className='text-sm text-gray-500 mt-2'>Loading captcha...</div>}
-      {error && <div className='text-sm text-red-500 mt-2'>{error}</div>}
+      {loading && <div className="text-sm text-zinc-500 mt-2">Loading captcha...</div>}
+      {error && <div className="text-sm text-red-500 mt-2">{error}</div>}
     </div>
-  );
+  )
 }

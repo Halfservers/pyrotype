@@ -1,15 +1,23 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Flame, ArrowRight } from 'lucide-react'
 
 import { loginSchema, type LoginData } from '@/lib/validators/auth'
 import login from '@/lib/api/auth/login'
 import { useAppStore } from '@/store'
+import { motion } from '@/components/motion'
+import Captcha, { type CaptchaConfig } from '@/components/elements/captcha'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+
+const CAPTCHA_FIELD_MAP: Record<string, string> = {
+  turnstile: 'cf-turnstile-response',
+  hcaptcha: 'h-captcha-response',
+  recaptcha: 'g-recaptcha-response',
+}
 
 export const Route = createFileRoute('/auth/login' as any)({
   component: LoginPage,
@@ -19,6 +27,15 @@ function LoginPage() {
   const navigate = useNavigate()
   const setUserData = useAppStore((s) => s.setUserData)
   const [error, setError] = useState<string | null>(null)
+  const [captchaConfig, setCaptchaConfig] = useState<CaptchaConfig>({ enabled: false, provider: 'none', siteKey: '' })
+  const captchaTokenRef = useRef<string>('')
+
+  useEffect(() => {
+    fetch('/api/auth/captcha')
+      .then((r) => r.json())
+      .then((data: CaptchaConfig) => setCaptchaConfig(data))
+      .catch(() => {})
+  }, [])
 
   const form = useForm({
     defaultValues: {
@@ -28,8 +45,19 @@ function LoginPage() {
     onSubmit: async ({ value }) => {
       setError(null)
 
+      if (captchaConfig.enabled && !captchaTokenRef.current) {
+        setError('Please complete the captcha verification.')
+        return
+      }
+
       try {
-        const response = await login(value as LoginData)
+        const payload: LoginData = { ...value }
+        if (captchaConfig.enabled && captchaTokenRef.current) {
+          const fieldName = CAPTCHA_FIELD_MAP[captchaConfig.provider] || 'cf-turnstile-response'
+          payload[fieldName] = captchaTokenRef.current
+        }
+
+        const response = await login(payload)
 
         if (response.complete) {
           if (response.user) {
@@ -64,13 +92,43 @@ function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#0a0a0a] relative overflow-hidden">
-      {/* Background gradient effects */}
+      {/* Animated gradient blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-[40%] -left-[20%] w-[60%] h-[60%] rounded-full bg-brand/[0.04] blur-[120px]" />
-        <div className="absolute -bottom-[40%] -right-[20%] w-[60%] h-[60%] rounded-full bg-purple-500/[0.03] blur-[120px]" />
+        <motion.div
+          animate={{
+            x: [0, 30, -20, 0],
+            y: [0, -25, 15, 0],
+            scale: [1, 1.1, 0.95, 1],
+          }}
+          transition={{ duration: 14, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute -top-[40%] -left-[20%] w-[60%] h-[60%] rounded-full bg-brand/[0.06] blur-[120px]"
+        />
+        <motion.div
+          animate={{
+            x: [0, -25, 20, 0],
+            y: [0, 20, -30, 0],
+            scale: [1, 0.95, 1.1, 1],
+          }}
+          transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute -bottom-[40%] -right-[20%] w-[60%] h-[60%] rounded-full bg-purple-500/[0.05] blur-[120px]"
+        />
+        <motion.div
+          animate={{
+            x: [0, 15, -10, 0],
+            y: [0, -15, 20, 0],
+            scale: [1, 1.05, 0.98, 1],
+          }}
+          transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute top-[20%] right-[10%] w-[40%] h-[40%] rounded-full bg-indigo-500/[0.03] blur-[100px]"
+        />
       </div>
 
-      <div className="relative w-full max-w-md px-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+        transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
+        className="relative w-full max-w-md px-6"
+      >
         {/* Logo */}
         <div className="flex items-center gap-3 mb-10">
           <div className="w-10 h-10 rounded-xl bg-brand/20 flex items-center justify-center">
@@ -80,7 +138,7 @@ function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 backdrop-blur-sm">
+        <div className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 backdrop-blur-xl shadow-[0_8px_64px_rgba(0,0,0,0.3)]">
           <h2 className="text-xl font-bold mb-1 text-white">Welcome back</h2>
           <p className="text-sm text-zinc-500 mb-6">Sign in to your account to continue.</p>
 
@@ -113,7 +171,7 @@ function LoginPage() {
                     onChange={(e) => field.handleChange(e.target.value)}
                     onBlur={field.handleBlur}
                     type="text"
-                    className="bg-white/[0.04] border-white/[0.08] text-white h-11 rounded-xl transition-all"
+                    className="bg-white/[0.04] border-white/[0.08] text-white h-11 rounded-xl transition-all focus:border-brand/50 focus:ring-2 focus:ring-brand/20"
                     placeholder="you@example.com"
                   />
                   {field.state.meta.errors.length > 0 && (
@@ -149,7 +207,7 @@ function LoginPage() {
                     onChange={(e) => field.handleChange(e.target.value)}
                     onBlur={field.handleBlur}
                     type="password"
-                    className="bg-white/[0.04] border-white/[0.08] text-white h-11 rounded-xl transition-all"
+                    className="bg-white/[0.04] border-white/[0.08] text-white h-11 rounded-xl transition-all focus:border-brand/50 focus:ring-2 focus:ring-brand/20"
                   />
                   {field.state.meta.errors.length > 0 && (
                     <p className="text-sm text-destructive">
@@ -159,6 +217,16 @@ function LoginPage() {
                 </div>
               )}
             />
+
+            {captchaConfig.enabled && (
+              <Captcha
+                config={captchaConfig}
+                onVerify={(token) => { captchaTokenRef.current = token }}
+                onExpired={() => { captchaTokenRef.current = '' }}
+                onError={() => { captchaTokenRef.current = '' }}
+                className="flex justify-center"
+              />
+            )}
 
             <form.Subscribe
               selector={(s) => s.isSubmitting}
@@ -188,7 +256,7 @@ function LoginPage() {
         <p className="text-center text-xs text-zinc-600 mt-6">
           Powered by Pyrotype
         </p>
-      </div>
+      </motion.div>
     </div>
   )
 }

@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../../../types/env'
 import { AppError } from '../../../../utils/errors'
 import { fractalList } from '../../../../utils/response'
+import { logActivity } from '../../../../services/activity'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -9,7 +10,6 @@ export async function getStartup(c: AppContext) {
   const server = c.var.server!
   const prisma = c.var.prisma
 
-  // Load server variables that are user-viewable
   const variables = await prisma.serverVariable.findMany({
     where: { serverId: server.id },
     include: { variable: true },
@@ -31,6 +31,7 @@ export async function getStartup(c: AppContext) {
 
 export async function updateVariable(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const { key, value } = await c.req.json()
 
@@ -38,9 +39,11 @@ export async function updateVariable(c: AppContext) {
     throw new AppError('A variable key must be provided.', 422, 'ValidationError')
   }
 
-  // Find the variable by env_variable name
   const serverVar = await prisma.serverVariable.findFirst({
-    where: { serverId: server.id },
+    where: {
+      serverId: server.id,
+      variable: { envVariable: key },
+    },
     include: {
       variable: {
         select: {
@@ -72,9 +75,14 @@ export async function updateVariable(c: AppContext) {
     },
   })
 
-  // TODO: Activity log: server:startup.edit
-
-  const egg = await prisma.egg.findUnique({ where: { id: server.eggId } })
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:startup.edit',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { key, value },
+  })
 
   return c.json({
     object: 'egg_variable',
@@ -130,12 +138,25 @@ export async function getDefaultCommand(c: AppContext) {
 
 export async function processCommand(c: AppContext) {
   const server = c.var.server!
+  const prisma = c.var.prisma
   const body = await c.req.json()
   const command = (body.command as string) ?? server.startup
 
-  // In production, process command by substituting variable values.
-  // For now, return the raw command as the "processed" version.
+  // Load all server variables and substitute {{VAR_NAME}} placeholders
+  const serverVars = await prisma.serverVariable.findMany({
+    where: { serverId: server.id },
+    include: { variable: true },
+  })
+
+  let processed = command
+  for (const sv of serverVars) {
+    if (sv.variable?.envVariable) {
+      const placeholder = `{{${sv.variable.envVariable}}}`
+      processed = processed.split(placeholder).join(sv.variableValue ?? '')
+    }
+  }
+
   return c.json({
-    processed_command: command,
+    processed_command: processed,
   })
 }

@@ -10,6 +10,11 @@ export async function index(c: AppContext) {
   const node = await prisma.node.findUnique({ where: { id } })
   if (!node) throw new NotFoundError('Node not found')
 
+  const mounts = await prisma.mountNode.findMany({
+    where: { nodeId: node.id },
+    include: { mount: true },
+  })
+
   const configuration = {
     debug: false,
     uuid: node.uuid,
@@ -31,8 +36,8 @@ export async function index(c: AppContext) {
         bind_port: node.daemonSFTP,
       },
     },
-    allowed_mounts: [],
-    remote: c.env.APP_KEY ? 'https://panel.example.com' : 'http://localhost:3000',
+    allowed_mounts: mounts.map((mn: any) => mn.mount.target),
+    remote: c.env.APP_URL || `${c.req.url.split('/api/')[0]}`,
   }
 
   return c.json(configuration)

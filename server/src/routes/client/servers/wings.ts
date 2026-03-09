@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Env, HonoVariables } from '../../../types/env'
 import { requirePermission } from '../../../middleware/permissions'
 import { requireDaemonType } from '../../../middleware/daemonType'
+import { rateLimit } from '../../../middleware/rateLimiter'
 import * as wingsServerCtrl from '../../../controllers/client/servers/wings/serverController'
 import * as websocketCtrl from '../../../controllers/client/servers/wings/websocketController'
 import * as resourceCtrl from '../../../controllers/client/servers/wings/resourceController'
@@ -53,7 +54,7 @@ wingsServerApp.post('/:server/files/decompress', fileCtrl.decompress)
 wingsServerApp.post('/:server/files/delete', fileCtrl.deleteFn)
 wingsServerApp.post('/:server/files/create-folder', fileCtrl.create)
 wingsServerApp.post('/:server/files/chmod', fileCtrl.chmod)
-wingsServerApp.post('/:server/files/pull', fileCtrl.pull)
+wingsServerApp.post('/:server/files/pull', rateLimit(10, 5), fileCtrl.pull)
 wingsServerApp.get('/:server/files/upload', fileCtrl.upload)
 
 // ---- Schedules ----

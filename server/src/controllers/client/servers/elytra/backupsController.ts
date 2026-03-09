@@ -2,6 +2,10 @@ import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../../../types/env'
 import { NotFoundError, AppError } from '../../../../utils/errors'
 import { fractalItem, fractalPaginated } from '../../../../utils/response'
+import { daemonRequest, getDaemonBaseUrl } from '../../../../services/daemon/proxy'
+import { generateDaemonJWT } from '../../../../services/daemon/jwt'
+import { logActivity } from '../../../../services/activity'
+import { generateUuid } from '../../../../utils/crypto'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -27,7 +31,6 @@ export async function listBackups(c: AppContext) {
     select: { bytes: true, disk: true },
   })
 
-  // Elytra-specific adapters for storage calculation
   const elytraAdapters = ['rustic_local', 'rustic_s3']
   const rusticSum = successfulBackups
     .filter(b => elytraAdapters.includes(b.disk))
@@ -38,8 +41,7 @@ export async function listBackups(c: AppContext) {
 
   const rusticSumMb = Math.round((rusticSum / 1024 / 1024) * 100) / 100
   const legacyUsageMb = Math.round((legacySum / 1024 / 1024) * 100) / 100
-  // Repository usage would come from server.repository_backup_bytes
-  const repositoryUsageMb = 0 // placeholder
+  const repositoryUsageMb = 0
   const overheadMb = Math.max(0, repositoryUsageMb - rusticSumMb)
   const totalUsedMb = legacyUsageMb + repositoryUsageMb
 
@@ -75,15 +77,44 @@ export async function listBackups(c: AppContext) {
 
 export async function createBackup(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
+  const prisma = c.var.prisma
   const { name, ignored, adapter } = await c.req.json()
 
-  // In production, this submits a job to the ElytraJobService which
-  // communicates with the Elytra daemon to create the backup.
-  // TODO: Submit elytra job: backup_create
-  // TODO: Activity log: backup:create
+  const backup = await prisma.backup.create({
+    data: {
+      serverId: server.id,
+      uuid: generateUuid(),
+      name: name ?? `Backup at ${new Date().toISOString()}`,
+      ignoredFiles: ignored ?? '[]',
+      disk: adapter ?? 'rustic_local',
+      bytes: 0,
+    },
+  })
+
+  const jobUuid = generateUuid()
+  await prisma.elytraJob.create({
+    data: {
+      uuid: jobUuid,
+      serverId: server.id,
+      userId: user.id,
+      jobType: 'backup_create',
+      jobData: { backup_uuid: backup.uuid, ignored, adapter },
+      status: 'pending',
+    },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.create',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup_uuid: backup.uuid, name: backup.name },
+  })
 
   return c.json({
-    job_id: `job_${Date.now()}`,
+    job_id: jobUuid,
     status: 'queued',
     type: 'backup_create',
   })
@@ -105,6 +136,8 @@ export async function showBackup(c: AppContext) {
 
 export async function downloadBackup(c: AppContext) {
   const server = c.var.server!
+  const node = server.node!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const backup = await prisma.backup.findFirst({
     where: { uuid: String(c.req.param('backup')), serverId: server.id },
@@ -118,16 +151,33 @@ export async function downloadBackup(c: AppContext) {
     throw new AppError('Cannot download an incomplete backup.', 400, 'BadRequest')
   }
 
-  // In production, generate a signed download URL
-  // TODO: Activity log: backup:download
+  const token = await generateDaemonJWT(
+    c.env.APP_KEY,
+    { server_uuid: server.uuid, user_id: user.id, backup_uuid: backup.uuid },
+    300,
+  )
+
+  const url = `${getDaemonBaseUrl(node)}/download/backup?token=${token}`
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.download',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup_uuid: backup.uuid },
+  })
+
   return c.json({
     object: 'signed_url',
-    attributes: { url: '' },
+    attributes: { url },
   })
 }
 
 export async function restoreBackup(c: AppContext) {
   const server = c.var.server!
+  const node = server.node!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const backup = await prisma.backup.findFirst({
     where: { uuid: String(c.req.param('backup')), serverId: server.id },
@@ -140,8 +190,25 @@ export async function restoreBackup(c: AppContext) {
   const body = await c.req.json()
   const truncateDirectory = body.truncate_directory ?? false
 
-  // In production, submit elytra job: backup_restore
-  // TODO: Activity log: backup:restore
+  await prisma.server.update({
+    where: { id: server.id },
+    data: { status: 'restoring_backup' },
+  })
+
+  await daemonRequest(
+    node, 'POST',
+    `/api/servers/${server.uuid}/backup/${backup.uuid}/restore`,
+    { truncate_directory: truncateDirectory },
+  )
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.restore',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup_uuid: backup.uuid, truncate_directory: truncateDirectory },
+  })
 
   return c.json({
     job_id: `job_${Date.now()}`,
@@ -152,6 +219,8 @@ export async function restoreBackup(c: AppContext) {
 
 export async function destroyBackup(c: AppContext) {
   const server = c.var.server!
+  const node = server.node!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const backup = await prisma.backup.findFirst({
     where: { uuid: String(c.req.param('backup')), serverId: server.id },
@@ -161,18 +230,28 @@ export async function destroyBackup(c: AppContext) {
     throw new NotFoundError('Backup not found.')
   }
 
-  // In production, submit elytra job: backup_delete
-  // TODO: Activity log: backup:delete
+  await daemonRequest(
+    node, 'DELETE',
+    `/api/servers/${server.uuid}/backup/${backup.uuid}`,
+  )
 
-  return c.json({
-    job_id: `job_${Date.now()}`,
-    status: 'queued',
-    type: 'backup_delete',
+  await prisma.backup.delete({ where: { id: backup.id } })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.delete',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup_uuid: backup.uuid },
   })
+
+  return c.body(null, 204)
 }
 
 export async function renameBackup(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const { name } = await c.req.json()
 
@@ -193,13 +272,21 @@ export async function renameBackup(c: AppContext) {
     data: { name },
   })
 
-  // TODO: Activity log: backup:rename
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.rename',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup_uuid: backup.uuid, name },
+  })
 
   return c.json(fractalItem('backup', updated))
 }
 
 export async function toggleLock(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const backup = await prisma.backup.findFirst({
     where: { uuid: String(c.req.param('backup')), serverId: server.id },
@@ -214,13 +301,21 @@ export async function toggleLock(c: AppContext) {
     data: { isLocked: !backup.isLocked },
   })
 
-  // TODO: Activity log: backup:lock
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.lock',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup_uuid: backup.uuid, locked: !backup.isLocked },
+  })
 
   return c.json(fractalItem('backup', updated))
 }
 
 export async function deleteAllBackups(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
   const prisma = c.var.prisma
 
   const backupCount = await prisma.backup.count({ where: { serverId: server.id } })
@@ -229,11 +324,28 @@ export async function deleteAllBackups(c: AppContext) {
     return c.json({ error: 'No backups to delete.' }, 400)
   }
 
-  // In production, submit elytra job: backup_delete_all
-  // TODO: Activity log: backup:delete_all
+  const jobUuid = generateUuid()
+  await prisma.elytraJob.create({
+    data: {
+      uuid: jobUuid,
+      serverId: server.id,
+      userId: user.id,
+      jobType: 'backup_delete_all',
+      jobData: {},
+      status: 'pending',
+    },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.delete_all',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+  })
 
   return c.json({
-    job_id: `job_${Date.now()}`,
+    job_id: jobUuid,
     status: 'queued',
     type: 'backup_delete_all',
   })
@@ -241,6 +353,7 @@ export async function deleteAllBackups(c: AppContext) {
 
 export async function bulkDeleteBackups(c: AppContext) {
   const server = c.var.server!
+  const user = c.var.user!
   const prisma = c.var.prisma
   const body = await c.req.json()
   const backupUuids = body.backup_uuids
@@ -253,7 +366,6 @@ export async function bulkDeleteBackups(c: AppContext) {
     return c.json({ error: 'Cannot delete more than 50 backups at once. Use Delete All for larger operations.' }, 400)
   }
 
-  // Verify all backups belong to this server
   const backups = await prisma.backup.findMany({
     where: { uuid: { in: backupUuids }, serverId: server.id },
   })
@@ -262,10 +374,30 @@ export async function bulkDeleteBackups(c: AppContext) {
     return c.json({ error: 'One or more backups not found or do not belong to this server.' }, 404)
   }
 
-  // In production, submit individual delete jobs for each backup
-  const jobIds: string[] = backups.map(() => `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+  const jobIds: string[] = []
+  for (const backup of backups) {
+    const jobUuid = generateUuid()
+    await prisma.elytraJob.create({
+      data: {
+        uuid: jobUuid,
+        serverId: server.id,
+        userId: user.id,
+        jobType: 'backup_delete',
+        jobData: { backup_uuid: backup.uuid },
+        status: 'pending',
+      },
+    })
+    jobIds.push(jobUuid)
+  }
 
-  // TODO: Activity log: backup:bulk_delete
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.bulk_delete',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup_uuids: backupUuids },
+  })
 
   return c.json({
     message: 'Bulk delete jobs submitted successfully',

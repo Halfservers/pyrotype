@@ -4,6 +4,12 @@ import { z } from 'zod';
 import { fractalList, fractalItem } from '../../../utils/response';
 import { NotFoundError, AppError } from '../../../utils/errors';
 import { SYSTEM_PERMISSIONS } from '../../../constants/permissions';
+import { hashPassword, generateUuid, generateToken } from '../../../utils/crypto';
+import {
+  sendAccountCreatedEmail,
+  sendAddedToServerEmail,
+  sendRemovedFromServerEmail,
+} from '../../../services/mail/mailer';
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>;
 
@@ -87,9 +93,30 @@ export async function store(c: AppContext) {
   const server = await resolveServer(prisma, c.req.param('server'));
   const body = storeSubuserSchema.parse(await c.req.json());
 
-  const targetUser = await prisma.user.findUnique({ where: { email: body.email } });
+  let targetUser = await prisma.user.findFirst({ where: { email: body.email } });
+  let isNewUser = false;
+
   if (!targetUser) {
-    throw new NotFoundError('A user with that email address does not exist.');
+    // Auto-create account for the invited email, matching Pyrodactyl's SubuserCreationService.
+    // The username is derived from the local part of the email with a short random suffix,
+    // capped at 64 characters to stay within the column limit.
+    const localPart = body.email.split('@')[0].replace(/[^\w.-]+/g, '').slice(0, 60);
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const username = `${localPart}_${suffix}`;
+
+    targetUser = await prisma.user.create({
+      data: {
+        uuid: generateUuid(),
+        username,
+        email: body.email,
+        nameFirst: 'Server',
+        nameLast: 'Subuser',
+        password: await hashPassword(generateUuid()),
+        rootAdmin: false,
+        language: 'en',
+      },
+    });
+    isNewUser = true;
   }
 
   if (targetUser.id === server.ownerId) {
@@ -114,6 +141,22 @@ export async function store(c: AppContext) {
     },
     include: { user: true },
   });
+
+  // If a new account was created, send a welcome email with a password setup link
+  if (isNewUser) {
+    const resetToken = generateToken();
+    await prisma.passwordReset.create({
+      data: { email: targetUser.email, token: resetToken, createdAt: new Date() },
+    });
+    sendAccountCreatedEmail(
+      prisma,
+      { email: targetUser.email, nameFirst: targetUser.nameFirst ?? targetUser.username },
+      resetToken,
+    ).catch(() => {});
+  }
+
+  // Notify the subuser they have been added to the server — non-blocking
+  sendAddedToServerEmail(prisma, targetUser.email, server.name).catch(() => {});
 
   return c.json(fractalItem('subuser', transformSubuser(subuser)));
 }
@@ -159,6 +202,9 @@ export async function deleteFn(c: AppContext) {
   if (!subuser) throw new NotFoundError('Subuser not found');
 
   await prisma.subuser.delete({ where: { id: subuser.id } });
+
+  // Notify the removed subuser — non-blocking
+  sendRemovedFromServerEmail(prisma, user.email, server.name).catch(() => {});
 
   return c.body(null, 204);
 }

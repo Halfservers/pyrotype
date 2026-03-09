@@ -3,6 +3,9 @@ import type { Env, HonoVariables } from '../../../../types/env'
 import { z } from 'zod'
 import { fractalList, fractalItem } from '../../../../utils/response'
 import { NotFoundError } from '../../../../utils/errors'
+import { logActivity } from '../../../../services/activity'
+import { enqueueJob } from '../../../../jobs'
+import { getNextCronDate } from '../../../../services/schedules'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -82,7 +85,10 @@ export async function index(c: AppContext) {
 export async function store(c: AppContext) {
   const server = await resolveServer(c)
   const prisma = c.var.prisma
+  const user = c.var.user!
   const body = scheduleSchema.parse(await c.req.json())
+
+  const nextRunAt = getNextCronDate(body.minute, body.hour, body.day_of_month, body.month, body.day_of_week)
 
   const schedule = await prisma.schedule.create({
     data: {
@@ -95,8 +101,18 @@ export async function store(c: AppContext) {
       cronDayOfWeek: body.day_of_week,
       isActive: body.is_active,
       onlyWhenOnline: body.only_when_online,
+      nextRunAt,
     },
     include: { tasks: true },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:schedule.create',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { name: body.name },
   })
 
   return c.json(fractalItem('schedule', transformSchedule(schedule)))
@@ -120,6 +136,7 @@ export async function view(c: AppContext) {
 export async function update(c: AppContext) {
   const server = await resolveServer(c)
   const prisma = c.var.prisma
+  const user = c.var.user!
   const scheduleId = parseInt(c.req.param('schedule'), 10)
   const body = scheduleSchema.parse(await c.req.json())
 
@@ -128,6 +145,8 @@ export async function update(c: AppContext) {
   })
 
   if (!existing) throw new NotFoundError('Schedule not found')
+
+  const nextRunAt = getNextCronDate(body.minute, body.hour, body.day_of_month, body.month, body.day_of_week)
 
   const data: any = {
     name: body.name,
@@ -138,6 +157,7 @@ export async function update(c: AppContext) {
     cronDayOfWeek: body.day_of_week,
     isActive: body.is_active,
     onlyWhenOnline: body.only_when_online,
+    nextRunAt,
   }
 
   if (existing.isActive !== body.is_active) {
@@ -150,12 +170,22 @@ export async function update(c: AppContext) {
     include: { tasks: { orderBy: { sequenceId: 'asc' } } },
   })
 
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:schedule.update',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { name: body.name },
+  })
+
   return c.json(fractalItem('schedule', transformSchedule(schedule)))
 }
 
 export async function execute(c: AppContext) {
   const server = await resolveServer(c)
   const prisma = c.var.prisma
+  const user = c.var.user!
   const scheduleId = parseInt(c.req.param('schedule'), 10)
 
   const schedule = await prisma.schedule.findFirst({
@@ -164,10 +194,23 @@ export async function execute(c: AppContext) {
 
   if (!schedule) throw new NotFoundError('Schedule not found')
 
-  // TODO: Dispatch schedule execution to the task processing service
   await prisma.schedule.update({
     where: { id: scheduleId },
     data: { isProcessing: true },
+  })
+
+  await enqueueJob(c.var.queue, {
+    type: 'schedule',
+    data: { scheduleId: schedule.id },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:schedule.execute',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { schedule: schedule.name },
   })
 
   return c.json([], 202)
@@ -176,6 +219,7 @@ export async function execute(c: AppContext) {
 export async function deleteFn(c: AppContext) {
   const server = await resolveServer(c)
   const prisma = c.var.prisma
+  const user = c.var.user!
   const scheduleId = parseInt(c.req.param('schedule'), 10)
 
   const schedule = await prisma.schedule.findFirst({
@@ -185,6 +229,15 @@ export async function deleteFn(c: AppContext) {
   if (!schedule) throw new NotFoundError('Schedule not found')
 
   await prisma.schedule.delete({ where: { id: scheduleId } })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:schedule.delete',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { name: schedule.name },
+  })
 
   return c.body(null, 204)
 }

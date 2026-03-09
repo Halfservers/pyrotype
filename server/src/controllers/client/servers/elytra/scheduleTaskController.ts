@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../../../types/env'
 import { NotFoundError, ForbiddenError, AppError } from '../../../../utils/errors'
 import { fractalItem } from '../../../../utils/response'
+import { logActivity } from '../../../../services/activity'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -31,6 +32,10 @@ export async function createTask(c: AppContext) {
 
   const { action, payload, time_offset, continue_on_failure, sequence_id } = await c.req.json()
 
+  if (action === 'backup' && server.backupLimit === 0) {
+    throw new ForbiddenError('A backup task cannot be created when the server backup limit is 0.')
+  }
+
   const lastSequenceId = schedule.tasks[0]?.sequenceId ?? 0
   let sequenceId = sequence_id ?? lastSequenceId + 1
   if (sequenceId < 1) sequenceId = 1
@@ -57,7 +62,13 @@ export async function createTask(c: AppContext) {
     },
   })
 
-  // TODO: Activity log: server:task.create
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:task.create',
+    ip,
+    serverId: server.id,
+    properties: { schedule_id: schedule.id, task_id: task.id, action: task.action },
+  })
 
   return c.json(fractalItem('task', task))
 }
@@ -119,7 +130,13 @@ export async function updateTask(c: AppContext) {
     },
   })
 
-  // TODO: Activity log: server:task.update
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:task.update',
+    ip,
+    serverId: server.id,
+    properties: { schedule_id: schedule.id, task_id: updated.id, action: updated.action },
+  })
 
   return c.json(fractalItem('task', updated))
 }
@@ -163,7 +180,13 @@ export async function deleteTask(c: AppContext) {
 
   await prisma.task.delete({ where: { id: task.id } })
 
-  // TODO: Activity log: server:task.delete
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:task.delete',
+    ip,
+    serverId: server.id,
+    properties: { schedule_id: schedule.id, task_id: task.id, action: task.action },
+  })
 
   return c.body(null, 204)
 }

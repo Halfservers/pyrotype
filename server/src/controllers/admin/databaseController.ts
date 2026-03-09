@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../types/env'
 import { fractalItem, fractalPaginated } from '../../utils/response'
 import { NotFoundError, ValidationError } from '../../utils/errors'
+import { createRemoteDatabase, deleteRemoteDatabase, resetRemoteDatabasePassword } from '../../services/databases'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -97,7 +98,8 @@ export async function store(c: AppContext) {
     },
   })
 
-  // TODO: create the actual database on the host
+  // Create the actual database and user on the remote MySQL host
+  await createRemoteDatabase(dbHost, dbName, username, password, remote ?? '%', 0)
 
   return c.json({
     ...fractalItem('server_database', transformDatabase(created)),
@@ -124,7 +126,11 @@ export async function resetPassword(c: AppContext) {
     data: { password: newPassword },
   })
 
-  // TODO: update password on the actual database host
+  // Update the password on the remote MySQL host
+  const dbHost = await prisma.databaseHost.findUnique({ where: { id: database.databaseHostId } })
+  if (dbHost) {
+    await resetRemoteDatabasePassword(dbHost, database.database, database.username, newPassword, database.remote, database.maxConnections ?? 0)
+  }
 
   return c.body(null, 204)
 }
@@ -139,7 +145,11 @@ export async function deleteDatabase(c: AppContext) {
   })
   if (!database) throw new NotFoundError('Database not found')
 
-  // TODO: drop the actual database on the host
+  // Drop the database and user on the remote MySQL host
+  const dbHost = await prisma.databaseHost.findUnique({ where: { id: database.databaseHostId } })
+  if (dbHost) {
+    await deleteRemoteDatabase(dbHost, database.database, database.username, database.remote)
+  }
 
   await prisma.database.delete({ where: { id: dbId } })
   return c.body(null, 204)

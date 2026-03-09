@@ -5,30 +5,23 @@ import { verifyPassword } from '../../utils/crypto'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
-// Simple in-memory rate limiter for SFTP auth
-const loginAttempts = new Map<string, { count: number; resetAt: number }>()
 const MAX_ATTEMPTS = 5
-const WINDOW_MS = 60000
+const WINDOW_SEC = 60
 
-function checkRateLimit(key: string): void {
-  const now = Date.now()
-  const entry = loginAttempts.get(key)
+async function checkRateLimit(kv: KVNamespace, key: string): Promise<void> {
+  const rlKey = `sftp-rl:${key}`
+  const raw = await kv.get(rlKey)
+  const count = raw ? parseInt(raw, 10) : 0
 
-  if (!entry || now > entry.resetAt) {
-    loginAttempts.set(key, { count: 1, resetAt: now + WINDOW_MS })
-    return
-  }
-
-  if (entry.count >= MAX_ATTEMPTS) {
-    const seconds = Math.ceil((entry.resetAt - now) / 1000)
+  if (count >= MAX_ATTEMPTS) {
     throw new AppError(
-      `Too many login attempts, please try again in ${seconds} seconds.`,
+      `Too many login attempts, please try again in ${WINDOW_SEC} seconds.`,
       429,
       'TooManyRequests',
     )
   }
 
-  entry.count++
+  await kv.put(rlKey, String(count + 1), { expirationTtl: WINDOW_SEC })
 }
 
 function parseUsername(value: string): { username: string; server: string } {
@@ -57,7 +50,7 @@ export async function authenticateSftp(c: AppContext) {
   }
 
   const rateLimitKey = `${connection.username}|${c.req.header('cf-connecting-ip') ?? 'unknown'}`
-  checkRateLimit(rateLimitKey)
+  await checkRateLimit(c.env.SESSION_KV, rateLimitKey)
 
   // Find the user
   const user = await prisma.user.findFirst({
@@ -99,7 +92,8 @@ export async function authenticateSftp(c: AppContext) {
     throw new ForbiddenError('Authorization credentials were not correct, please try again.')
   }
 
-  // Check SFTP access permissions
+  // Check SFTP access permissions (single query, reused for response)
+  let permissions: string[] = ['*']
   if (!user.rootAdmin && server.ownerId !== user.id) {
     const subuser = await prisma.subuser.findFirst({
       where: { serverId: server.id, userId: user.id },
@@ -110,16 +104,7 @@ export async function authenticateSftp(c: AppContext) {
     if (!perms.includes('file.sftp')) {
       throw new ForbiddenError('You do not have permission to access SFTP for this server.')
     }
-  }
-
-  // Build permissions list
-  let permissions: string[] = ['*']
-  if (!user.rootAdmin && server.ownerId !== user.id) {
-    const subuser = await prisma.subuser.findFirst({
-      where: { serverId: server.id, userId: user.id },
-      select: { permissions: true },
-    })
-    permissions = subuser?.permissions as string[] ?? []
+    permissions = perms
   }
 
   return c.json({

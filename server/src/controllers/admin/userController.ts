@@ -3,7 +3,8 @@ import type { Env, HonoVariables } from '../../types/env'
 import { fractalItem, fractalPaginated } from '../../utils/response'
 import { paginationSchema, getPaginationOffset } from '../../utils/pagination'
 import { NotFoundError } from '../../utils/errors'
-import { hashPassword, generateUuid } from '../../utils/crypto'
+import { hashPassword, generateUuid, generateToken } from '../../utils/crypto'
+import { sendAccountCreatedEmail } from '../../services/mail/mailer'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -53,9 +54,16 @@ export async function index(c: AppContext) {
   const filterExternalId = c.req.query('filter[external_id]')
 
   const where: any = {}
-  if (filterEmail) where.email = { contains: filterEmail }
+  if (filterEmail && filterUsername) {
+    where.OR = [
+      { email: { contains: filterEmail } },
+      { username: { contains: filterUsername } },
+    ]
+  } else {
+    if (filterEmail) where.email = { contains: filterEmail }
+    if (filterUsername) where.username = { contains: filterUsername }
+  }
   if (filterUuid) where.uuid = { contains: filterUuid }
-  if (filterUsername) where.username = { contains: filterUsername }
   if (filterExternalId) where.externalId = filterExternalId
 
   const sort = c.req.query('sort')
@@ -91,6 +99,9 @@ export async function store(c: AppContext) {
   const prisma = c.var.prisma
   const { external_id, username, email, name_first, name_last, password, root_admin, language } = await c.req.json()
 
+  // If no password provided, generate a random one and issue a reset token
+  // so the user can set their own password via the welcome email link
+  const noPasswordProvided = !password
   const hashedPassword = password ? await hashPassword(password) : await hashPassword(generateUuid())
 
   const user = await prisma.user.create({
@@ -106,6 +117,21 @@ export async function store(c: AppContext) {
       language: language ?? 'en',
     },
   })
+
+  let resetToken: string | undefined
+  if (noPasswordProvided) {
+    resetToken = generateToken()
+    await prisma.passwordReset.create({
+      data: { email: user.email, token: resetToken, createdAt: new Date() },
+    })
+  }
+
+  // Send welcome email — non-blocking, never fails the request
+  sendAccountCreatedEmail(
+    prisma,
+    { email: user.email, nameFirst: user.nameFirst ?? user.username },
+    resetToken,
+  ).catch(() => {})
 
   return c.json({
     ...fractalItem('user', transformUser(user)),

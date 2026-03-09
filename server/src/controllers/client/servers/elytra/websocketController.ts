@@ -1,12 +1,14 @@
 import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../../../types/env'
-import { hmacSign } from '../../../../utils/crypto'
 import { ForbiddenError } from '../../../../utils/errors'
+import { generateDaemonJWT } from '../../../../services/daemon/jwt'
+import { getDaemonWsUrl } from '../../../../services/daemon/proxy'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
 export async function getWebsocket(c: AppContext) {
   const server = c.var.server!
+  const node = server.node!
   const user = c.var.user!
   const permissions = c.var.serverPermissions ?? []
 
@@ -14,19 +16,13 @@ export async function getWebsocket(c: AppContext) {
     throw new ForbiddenError('You do not have permission to connect to this server\'s websocket.')
   }
 
-  // Generate a signed JWT-like token for daemon websocket auth
-  const payload = {
-    user_id: user.id,
-    server_uuid: server.uuid,
-    permissions,
-    exp: Math.floor(Date.now() / 1000) + 600, // 10 minutes
-  }
+  const token = await generateDaemonJWT(
+    c.env.APP_KEY,
+    { user_id: user.id, server_uuid: server.uuid, permissions },
+    600,
+  )
 
-  const token = await hmacSign(c.env.APP_KEY, JSON.stringify(payload))
-
-  // Build websocket URL from node connection address
-  // Placeholder: actual node lookup would happen via prisma
-  const socket = `wss://daemon.example.com/api/servers/${server.uuid}/ws`
+  const socket = getDaemonWsUrl(node, server.uuid)
 
   return c.json({
     data: {

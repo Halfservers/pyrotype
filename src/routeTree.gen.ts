@@ -25,10 +25,19 @@ import { Route as AuthedAccountSshRouteImport } from './routes/_authed/account/s
 import { Route as AuthedAccountApiRouteImport } from './routes/_authed/account/api'
 import { Route as AuthedAccountActivityRouteImport } from './routes/_authed/account/activity'
 import { Route as AdminAdminUsersRouteImport } from './routes/_admin/admin/users'
+import { Route as AdminAdminSettingsRouteImport } from './routes/_admin/admin/settings'
 import { Route as AdminAdminServersRouteImport } from './routes/_admin/admin/servers'
 import { Route as AdminAdminNodesRouteImport } from './routes/_admin/admin/nodes'
+import { Route as AdminAdminNestsRouteImport } from './routes/_admin/admin/nests'
+import { Route as AdminAdminMountsRouteImport } from './routes/_admin/admin/mounts'
 import { Route as AdminAdminLocationsRouteImport } from './routes/_admin/admin/locations'
+import { Route as AdminAdminDatabasesRouteImport } from './routes/_admin/admin/databases'
+import { Route as AdminAdminApiRouteImport } from './routes/_admin/admin/api'
+import { Route as AdminAdminAllocationsRouteImport } from './routes/_admin/admin/allocations'
+import { Route as AdminAdminActivityRouteImport } from './routes/_admin/admin/activity'
 import { Route as AuthedServerIdIndexRouteImport } from './routes/_authed/server/$id/index'
+import { Route as AdminAdminServersIndexRouteImport } from './routes/_admin/admin/servers/index'
+import { Route as AdminAdminNodesIndexRouteImport } from './routes/_admin/admin/nodes/index'
 import { Route as AuthedServerIdUsersRouteImport } from './routes/_authed/server/$id/users'
 import { Route as AuthedServerIdStartupRouteImport } from './routes/_authed/server/$id/startup'
 import { Route as AuthedServerIdShellRouteImport } from './routes/_authed/server/$id/shell'
@@ -40,6 +49,22 @@ import { Route as AuthedServerIdFilesRouteImport } from './routes/_authed/server
 import { Route as AuthedServerIdDatabasesRouteImport } from './routes/_authed/server/$id/databases'
 import { Route as AuthedServerIdBackupsRouteImport } from './routes/_authed/server/$id/backups'
 import { Route as AuthedServerIdActivityRouteImport } from './routes/_authed/server/$id/activity'
+import { Route as AdminAdminNodesNewRouteImport } from './routes/_admin/admin/nodes/new'
+import { Route as AdminAdminServersViewIdRouteImport } from './routes/_admin/admin/servers/view.$id'
+import { Route as AdminAdminNodesViewIdRouteImport } from './routes/_admin/admin/nodes/view.$id'
+import { Route as AdminAdminServersViewIdIndexRouteImport } from './routes/_admin/admin/servers/view.$id/index'
+import { Route as AdminAdminNodesViewIdIndexRouteImport } from './routes/_admin/admin/nodes/view.$id/index'
+import { Route as AdminAdminServersViewIdStartupRouteImport } from './routes/_admin/admin/servers/view.$id/startup'
+import { Route as AdminAdminServersViewIdMountsRouteImport } from './routes/_admin/admin/servers/view.$id/mounts'
+import { Route as AdminAdminServersViewIdManageRouteImport } from './routes/_admin/admin/servers/view.$id/manage'
+import { Route as AdminAdminServersViewIdDetailsRouteImport } from './routes/_admin/admin/servers/view.$id/details'
+import { Route as AdminAdminServersViewIdDeleteRouteImport } from './routes/_admin/admin/servers/view.$id/delete'
+import { Route as AdminAdminServersViewIdDatabaseRouteImport } from './routes/_admin/admin/servers/view.$id/database'
+import { Route as AdminAdminServersViewIdBuildRouteImport } from './routes/_admin/admin/servers/view.$id/build'
+import { Route as AdminAdminNodesViewIdSettingsRouteImport } from './routes/_admin/admin/nodes/view.$id/settings'
+import { Route as AdminAdminNodesViewIdServersRouteImport } from './routes/_admin/admin/nodes/view.$id/servers'
+import { Route as AdminAdminNodesViewIdConfigurationRouteImport } from './routes/_admin/admin/nodes/view.$id/configuration'
+import { Route as AdminAdminNodesViewIdAllocationRouteImport } from './routes/_admin/admin/nodes/view.$id/allocation'
 
 const AuthedRoute = AuthedRouteImport.update({
   id: '/_authed',
@@ -119,6 +144,11 @@ const AdminAdminUsersRoute = AdminAdminUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AdminAdminRoute,
 } as any)
+const AdminAdminSettingsRoute = AdminAdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
 const AdminAdminServersRoute = AdminAdminServersRouteImport.update({
   id: '/servers',
   path: '/servers',
@@ -129,15 +159,55 @@ const AdminAdminNodesRoute = AdminAdminNodesRouteImport.update({
   path: '/nodes',
   getParentRoute: () => AdminAdminRoute,
 } as any)
+const AdminAdminNestsRoute = AdminAdminNestsRouteImport.update({
+  id: '/nests',
+  path: '/nests',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
+const AdminAdminMountsRoute = AdminAdminMountsRouteImport.update({
+  id: '/mounts',
+  path: '/mounts',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
 const AdminAdminLocationsRoute = AdminAdminLocationsRouteImport.update({
   id: '/locations',
   path: '/locations',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
+const AdminAdminDatabasesRoute = AdminAdminDatabasesRouteImport.update({
+  id: '/databases',
+  path: '/databases',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
+const AdminAdminApiRoute = AdminAdminApiRouteImport.update({
+  id: '/api',
+  path: '/api',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
+const AdminAdminAllocationsRoute = AdminAdminAllocationsRouteImport.update({
+  id: '/allocations',
+  path: '/allocations',
+  getParentRoute: () => AdminAdminRoute,
+} as any)
+const AdminAdminActivityRoute = AdminAdminActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => AdminAdminRoute,
 } as any)
 const AuthedServerIdIndexRoute = AuthedServerIdIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthedServerIdRoute,
+} as any)
+const AdminAdminServersIndexRoute = AdminAdminServersIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminAdminServersRoute,
+} as any)
+const AdminAdminNodesIndexRoute = AdminAdminNodesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminAdminNodesRoute,
 } as any)
 const AuthedServerIdUsersRoute = AuthedServerIdUsersRouteImport.update({
   id: '/users',
@@ -194,6 +264,99 @@ const AuthedServerIdActivityRoute = AuthedServerIdActivityRouteImport.update({
   path: '/activity',
   getParentRoute: () => AuthedServerIdRoute,
 } as any)
+const AdminAdminNodesNewRoute = AdminAdminNodesNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AdminAdminNodesRoute,
+} as any)
+const AdminAdminServersViewIdRoute = AdminAdminServersViewIdRouteImport.update({
+  id: '/view/$id',
+  path: '/view/$id',
+  getParentRoute: () => AdminAdminServersRoute,
+} as any)
+const AdminAdminNodesViewIdRoute = AdminAdminNodesViewIdRouteImport.update({
+  id: '/view/$id',
+  path: '/view/$id',
+  getParentRoute: () => AdminAdminNodesRoute,
+} as any)
+const AdminAdminServersViewIdIndexRoute =
+  AdminAdminServersViewIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AdminAdminServersViewIdRoute,
+  } as any)
+const AdminAdminNodesViewIdIndexRoute =
+  AdminAdminNodesViewIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AdminAdminNodesViewIdRoute,
+  } as any)
+const AdminAdminServersViewIdStartupRoute =
+  AdminAdminServersViewIdStartupRouteImport.update({
+    id: '/startup',
+    path: '/startup',
+    getParentRoute: () => AdminAdminServersViewIdRoute,
+  } as any)
+const AdminAdminServersViewIdMountsRoute =
+  AdminAdminServersViewIdMountsRouteImport.update({
+    id: '/mounts',
+    path: '/mounts',
+    getParentRoute: () => AdminAdminServersViewIdRoute,
+  } as any)
+const AdminAdminServersViewIdManageRoute =
+  AdminAdminServersViewIdManageRouteImport.update({
+    id: '/manage',
+    path: '/manage',
+    getParentRoute: () => AdminAdminServersViewIdRoute,
+  } as any)
+const AdminAdminServersViewIdDetailsRoute =
+  AdminAdminServersViewIdDetailsRouteImport.update({
+    id: '/details',
+    path: '/details',
+    getParentRoute: () => AdminAdminServersViewIdRoute,
+  } as any)
+const AdminAdminServersViewIdDeleteRoute =
+  AdminAdminServersViewIdDeleteRouteImport.update({
+    id: '/delete',
+    path: '/delete',
+    getParentRoute: () => AdminAdminServersViewIdRoute,
+  } as any)
+const AdminAdminServersViewIdDatabaseRoute =
+  AdminAdminServersViewIdDatabaseRouteImport.update({
+    id: '/database',
+    path: '/database',
+    getParentRoute: () => AdminAdminServersViewIdRoute,
+  } as any)
+const AdminAdminServersViewIdBuildRoute =
+  AdminAdminServersViewIdBuildRouteImport.update({
+    id: '/build',
+    path: '/build',
+    getParentRoute: () => AdminAdminServersViewIdRoute,
+  } as any)
+const AdminAdminNodesViewIdSettingsRoute =
+  AdminAdminNodesViewIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AdminAdminNodesViewIdRoute,
+  } as any)
+const AdminAdminNodesViewIdServersRoute =
+  AdminAdminNodesViewIdServersRouteImport.update({
+    id: '/servers',
+    path: '/servers',
+    getParentRoute: () => AdminAdminNodesViewIdRoute,
+  } as any)
+const AdminAdminNodesViewIdConfigurationRoute =
+  AdminAdminNodesViewIdConfigurationRouteImport.update({
+    id: '/configuration',
+    path: '/configuration',
+    getParentRoute: () => AdminAdminNodesViewIdRoute,
+  } as any)
+const AdminAdminNodesViewIdAllocationRoute =
+  AdminAdminNodesViewIdAllocationRouteImport.update({
+    id: '/allocation',
+    path: '/allocation',
+    getParentRoute: () => AdminAdminNodesViewIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthedIndexRoute
@@ -201,9 +364,16 @@ export interface FileRoutesByFullPath {
   '/account': typeof AuthedAccountRouteWithChildren
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRouteWithChildren
+  '/admin/activity': typeof AdminAdminActivityRoute
+  '/admin/allocations': typeof AdminAdminAllocationsRoute
+  '/admin/api': typeof AdminAdminApiRoute
+  '/admin/databases': typeof AdminAdminDatabasesRoute
   '/admin/locations': typeof AdminAdminLocationsRoute
-  '/admin/nodes': typeof AdminAdminNodesRoute
-  '/admin/servers': typeof AdminAdminServersRoute
+  '/admin/mounts': typeof AdminAdminMountsRoute
+  '/admin/nests': typeof AdminAdminNestsRoute
+  '/admin/nodes': typeof AdminAdminNodesRouteWithChildren
+  '/admin/servers': typeof AdminAdminServersRouteWithChildren
+  '/admin/settings': typeof AdminAdminSettingsRoute
   '/admin/users': typeof AdminAdminUsersRoute
   '/account/activity': typeof AuthedAccountActivityRoute
   '/account/api': typeof AuthedAccountApiRoute
@@ -213,6 +383,7 @@ export interface FileRoutesByFullPath {
   '/auth/reset-password/$token': typeof AuthResetPasswordTokenRoute
   '/admin/': typeof AdminAdminIndexRoute
   '/account/': typeof AuthedAccountIndexRoute
+  '/admin/nodes/new': typeof AdminAdminNodesNewRoute
   '/server/$id/activity': typeof AuthedServerIdActivityRoute
   '/server/$id/backups': typeof AuthedServerIdBackupsRoute
   '/server/$id/databases': typeof AuthedServerIdDatabasesRoute
@@ -224,15 +395,37 @@ export interface FileRoutesByFullPath {
   '/server/$id/shell': typeof AuthedServerIdShellRoute
   '/server/$id/startup': typeof AuthedServerIdStartupRoute
   '/server/$id/users': typeof AuthedServerIdUsersRoute
+  '/admin/nodes/': typeof AdminAdminNodesIndexRoute
+  '/admin/servers/': typeof AdminAdminServersIndexRoute
   '/server/$id/': typeof AuthedServerIdIndexRoute
+  '/admin/nodes/view/$id': typeof AdminAdminNodesViewIdRouteWithChildren
+  '/admin/servers/view/$id': typeof AdminAdminServersViewIdRouteWithChildren
+  '/admin/nodes/view/$id/allocation': typeof AdminAdminNodesViewIdAllocationRoute
+  '/admin/nodes/view/$id/configuration': typeof AdminAdminNodesViewIdConfigurationRoute
+  '/admin/nodes/view/$id/servers': typeof AdminAdminNodesViewIdServersRoute
+  '/admin/nodes/view/$id/settings': typeof AdminAdminNodesViewIdSettingsRoute
+  '/admin/servers/view/$id/build': typeof AdminAdminServersViewIdBuildRoute
+  '/admin/servers/view/$id/database': typeof AdminAdminServersViewIdDatabaseRoute
+  '/admin/servers/view/$id/delete': typeof AdminAdminServersViewIdDeleteRoute
+  '/admin/servers/view/$id/details': typeof AdminAdminServersViewIdDetailsRoute
+  '/admin/servers/view/$id/manage': typeof AdminAdminServersViewIdManageRoute
+  '/admin/servers/view/$id/mounts': typeof AdminAdminServersViewIdMountsRoute
+  '/admin/servers/view/$id/startup': typeof AdminAdminServersViewIdStartupRoute
+  '/admin/nodes/view/$id/': typeof AdminAdminNodesViewIdIndexRoute
+  '/admin/servers/view/$id/': typeof AdminAdminServersViewIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AuthedIndexRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRouteWithChildren
+  '/admin/activity': typeof AdminAdminActivityRoute
+  '/admin/allocations': typeof AdminAdminAllocationsRoute
+  '/admin/api': typeof AdminAdminApiRoute
+  '/admin/databases': typeof AdminAdminDatabasesRoute
   '/admin/locations': typeof AdminAdminLocationsRoute
-  '/admin/nodes': typeof AdminAdminNodesRoute
-  '/admin/servers': typeof AdminAdminServersRoute
+  '/admin/mounts': typeof AdminAdminMountsRoute
+  '/admin/nests': typeof AdminAdminNestsRoute
+  '/admin/settings': typeof AdminAdminSettingsRoute
   '/admin/users': typeof AdminAdminUsersRoute
   '/account/activity': typeof AuthedAccountActivityRoute
   '/account/api': typeof AuthedAccountApiRoute
@@ -241,6 +434,7 @@ export interface FileRoutesByTo {
   '/auth/reset-password/$token': typeof AuthResetPasswordTokenRoute
   '/admin': typeof AdminAdminIndexRoute
   '/account': typeof AuthedAccountIndexRoute
+  '/admin/nodes/new': typeof AdminAdminNodesNewRoute
   '/server/$id/activity': typeof AuthedServerIdActivityRoute
   '/server/$id/backups': typeof AuthedServerIdBackupsRoute
   '/server/$id/databases': typeof AuthedServerIdDatabasesRoute
@@ -252,7 +446,22 @@ export interface FileRoutesByTo {
   '/server/$id/shell': typeof AuthedServerIdShellRoute
   '/server/$id/startup': typeof AuthedServerIdStartupRoute
   '/server/$id/users': typeof AuthedServerIdUsersRoute
+  '/admin/nodes': typeof AdminAdminNodesIndexRoute
+  '/admin/servers': typeof AdminAdminServersIndexRoute
   '/server/$id': typeof AuthedServerIdIndexRoute
+  '/admin/nodes/view/$id/allocation': typeof AdminAdminNodesViewIdAllocationRoute
+  '/admin/nodes/view/$id/configuration': typeof AdminAdminNodesViewIdConfigurationRoute
+  '/admin/nodes/view/$id/servers': typeof AdminAdminNodesViewIdServersRoute
+  '/admin/nodes/view/$id/settings': typeof AdminAdminNodesViewIdSettingsRoute
+  '/admin/servers/view/$id/build': typeof AdminAdminServersViewIdBuildRoute
+  '/admin/servers/view/$id/database': typeof AdminAdminServersViewIdDatabaseRoute
+  '/admin/servers/view/$id/delete': typeof AdminAdminServersViewIdDeleteRoute
+  '/admin/servers/view/$id/details': typeof AdminAdminServersViewIdDetailsRoute
+  '/admin/servers/view/$id/manage': typeof AdminAdminServersViewIdManageRoute
+  '/admin/servers/view/$id/mounts': typeof AdminAdminServersViewIdMountsRoute
+  '/admin/servers/view/$id/startup': typeof AdminAdminServersViewIdStartupRoute
+  '/admin/nodes/view/$id': typeof AdminAdminNodesViewIdIndexRoute
+  '/admin/servers/view/$id': typeof AdminAdminServersViewIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -263,9 +472,16 @@ export interface FileRoutesById {
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/login': typeof AuthLoginRouteWithChildren
   '/_authed/': typeof AuthedIndexRoute
+  '/_admin/admin/activity': typeof AdminAdminActivityRoute
+  '/_admin/admin/allocations': typeof AdminAdminAllocationsRoute
+  '/_admin/admin/api': typeof AdminAdminApiRoute
+  '/_admin/admin/databases': typeof AdminAdminDatabasesRoute
   '/_admin/admin/locations': typeof AdminAdminLocationsRoute
-  '/_admin/admin/nodes': typeof AdminAdminNodesRoute
-  '/_admin/admin/servers': typeof AdminAdminServersRoute
+  '/_admin/admin/mounts': typeof AdminAdminMountsRoute
+  '/_admin/admin/nests': typeof AdminAdminNestsRoute
+  '/_admin/admin/nodes': typeof AdminAdminNodesRouteWithChildren
+  '/_admin/admin/servers': typeof AdminAdminServersRouteWithChildren
+  '/_admin/admin/settings': typeof AdminAdminSettingsRoute
   '/_admin/admin/users': typeof AdminAdminUsersRoute
   '/_authed/account/activity': typeof AuthedAccountActivityRoute
   '/_authed/account/api': typeof AuthedAccountApiRoute
@@ -275,6 +491,7 @@ export interface FileRoutesById {
   '/auth/reset-password/$token': typeof AuthResetPasswordTokenRoute
   '/_admin/admin/': typeof AdminAdminIndexRoute
   '/_authed/account/': typeof AuthedAccountIndexRoute
+  '/_admin/admin/nodes/new': typeof AdminAdminNodesNewRoute
   '/_authed/server/$id/activity': typeof AuthedServerIdActivityRoute
   '/_authed/server/$id/backups': typeof AuthedServerIdBackupsRoute
   '/_authed/server/$id/databases': typeof AuthedServerIdDatabasesRoute
@@ -286,7 +503,24 @@ export interface FileRoutesById {
   '/_authed/server/$id/shell': typeof AuthedServerIdShellRoute
   '/_authed/server/$id/startup': typeof AuthedServerIdStartupRoute
   '/_authed/server/$id/users': typeof AuthedServerIdUsersRoute
+  '/_admin/admin/nodes/': typeof AdminAdminNodesIndexRoute
+  '/_admin/admin/servers/': typeof AdminAdminServersIndexRoute
   '/_authed/server/$id/': typeof AuthedServerIdIndexRoute
+  '/_admin/admin/nodes/view/$id': typeof AdminAdminNodesViewIdRouteWithChildren
+  '/_admin/admin/servers/view/$id': typeof AdminAdminServersViewIdRouteWithChildren
+  '/_admin/admin/nodes/view/$id/allocation': typeof AdminAdminNodesViewIdAllocationRoute
+  '/_admin/admin/nodes/view/$id/configuration': typeof AdminAdminNodesViewIdConfigurationRoute
+  '/_admin/admin/nodes/view/$id/servers': typeof AdminAdminNodesViewIdServersRoute
+  '/_admin/admin/nodes/view/$id/settings': typeof AdminAdminNodesViewIdSettingsRoute
+  '/_admin/admin/servers/view/$id/build': typeof AdminAdminServersViewIdBuildRoute
+  '/_admin/admin/servers/view/$id/database': typeof AdminAdminServersViewIdDatabaseRoute
+  '/_admin/admin/servers/view/$id/delete': typeof AdminAdminServersViewIdDeleteRoute
+  '/_admin/admin/servers/view/$id/details': typeof AdminAdminServersViewIdDetailsRoute
+  '/_admin/admin/servers/view/$id/manage': typeof AdminAdminServersViewIdManageRoute
+  '/_admin/admin/servers/view/$id/mounts': typeof AdminAdminServersViewIdMountsRoute
+  '/_admin/admin/servers/view/$id/startup': typeof AdminAdminServersViewIdStartupRoute
+  '/_admin/admin/nodes/view/$id/': typeof AdminAdminNodesViewIdIndexRoute
+  '/_admin/admin/servers/view/$id/': typeof AdminAdminServersViewIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -296,9 +530,16 @@ export interface FileRouteTypes {
     | '/account'
     | '/auth/forgot-password'
     | '/auth/login'
+    | '/admin/activity'
+    | '/admin/allocations'
+    | '/admin/api'
+    | '/admin/databases'
     | '/admin/locations'
+    | '/admin/mounts'
+    | '/admin/nests'
     | '/admin/nodes'
     | '/admin/servers'
+    | '/admin/settings'
     | '/admin/users'
     | '/account/activity'
     | '/account/api'
@@ -308,6 +549,7 @@ export interface FileRouteTypes {
     | '/auth/reset-password/$token'
     | '/admin/'
     | '/account/'
+    | '/admin/nodes/new'
     | '/server/$id/activity'
     | '/server/$id/backups'
     | '/server/$id/databases'
@@ -319,15 +561,37 @@ export interface FileRouteTypes {
     | '/server/$id/shell'
     | '/server/$id/startup'
     | '/server/$id/users'
+    | '/admin/nodes/'
+    | '/admin/servers/'
     | '/server/$id/'
+    | '/admin/nodes/view/$id'
+    | '/admin/servers/view/$id'
+    | '/admin/nodes/view/$id/allocation'
+    | '/admin/nodes/view/$id/configuration'
+    | '/admin/nodes/view/$id/servers'
+    | '/admin/nodes/view/$id/settings'
+    | '/admin/servers/view/$id/build'
+    | '/admin/servers/view/$id/database'
+    | '/admin/servers/view/$id/delete'
+    | '/admin/servers/view/$id/details'
+    | '/admin/servers/view/$id/manage'
+    | '/admin/servers/view/$id/mounts'
+    | '/admin/servers/view/$id/startup'
+    | '/admin/nodes/view/$id/'
+    | '/admin/servers/view/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth/forgot-password'
     | '/auth/login'
+    | '/admin/activity'
+    | '/admin/allocations'
+    | '/admin/api'
+    | '/admin/databases'
     | '/admin/locations'
-    | '/admin/nodes'
-    | '/admin/servers'
+    | '/admin/mounts'
+    | '/admin/nests'
+    | '/admin/settings'
     | '/admin/users'
     | '/account/activity'
     | '/account/api'
@@ -336,6 +600,7 @@ export interface FileRouteTypes {
     | '/auth/reset-password/$token'
     | '/admin'
     | '/account'
+    | '/admin/nodes/new'
     | '/server/$id/activity'
     | '/server/$id/backups'
     | '/server/$id/databases'
@@ -347,7 +612,22 @@ export interface FileRouteTypes {
     | '/server/$id/shell'
     | '/server/$id/startup'
     | '/server/$id/users'
+    | '/admin/nodes'
+    | '/admin/servers'
     | '/server/$id'
+    | '/admin/nodes/view/$id/allocation'
+    | '/admin/nodes/view/$id/configuration'
+    | '/admin/nodes/view/$id/servers'
+    | '/admin/nodes/view/$id/settings'
+    | '/admin/servers/view/$id/build'
+    | '/admin/servers/view/$id/database'
+    | '/admin/servers/view/$id/delete'
+    | '/admin/servers/view/$id/details'
+    | '/admin/servers/view/$id/manage'
+    | '/admin/servers/view/$id/mounts'
+    | '/admin/servers/view/$id/startup'
+    | '/admin/nodes/view/$id'
+    | '/admin/servers/view/$id'
   id:
     | '__root__'
     | '/_admin'
@@ -357,9 +637,16 @@ export interface FileRouteTypes {
     | '/auth/forgot-password'
     | '/auth/login'
     | '/_authed/'
+    | '/_admin/admin/activity'
+    | '/_admin/admin/allocations'
+    | '/_admin/admin/api'
+    | '/_admin/admin/databases'
     | '/_admin/admin/locations'
+    | '/_admin/admin/mounts'
+    | '/_admin/admin/nests'
     | '/_admin/admin/nodes'
     | '/_admin/admin/servers'
+    | '/_admin/admin/settings'
     | '/_admin/admin/users'
     | '/_authed/account/activity'
     | '/_authed/account/api'
@@ -369,6 +656,7 @@ export interface FileRouteTypes {
     | '/auth/reset-password/$token'
     | '/_admin/admin/'
     | '/_authed/account/'
+    | '/_admin/admin/nodes/new'
     | '/_authed/server/$id/activity'
     | '/_authed/server/$id/backups'
     | '/_authed/server/$id/databases'
@@ -380,7 +668,24 @@ export interface FileRouteTypes {
     | '/_authed/server/$id/shell'
     | '/_authed/server/$id/startup'
     | '/_authed/server/$id/users'
+    | '/_admin/admin/nodes/'
+    | '/_admin/admin/servers/'
     | '/_authed/server/$id/'
+    | '/_admin/admin/nodes/view/$id'
+    | '/_admin/admin/servers/view/$id'
+    | '/_admin/admin/nodes/view/$id/allocation'
+    | '/_admin/admin/nodes/view/$id/configuration'
+    | '/_admin/admin/nodes/view/$id/servers'
+    | '/_admin/admin/nodes/view/$id/settings'
+    | '/_admin/admin/servers/view/$id/build'
+    | '/_admin/admin/servers/view/$id/database'
+    | '/_admin/admin/servers/view/$id/delete'
+    | '/_admin/admin/servers/view/$id/details'
+    | '/_admin/admin/servers/view/$id/manage'
+    | '/_admin/admin/servers/view/$id/mounts'
+    | '/_admin/admin/servers/view/$id/startup'
+    | '/_admin/admin/nodes/view/$id/'
+    | '/_admin/admin/servers/view/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -505,6 +810,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAdminUsersRouteImport
       parentRoute: typeof AdminAdminRoute
     }
+    '/_admin/admin/settings': {
+      id: '/_admin/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AdminAdminSettingsRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
     '/_admin/admin/servers': {
       id: '/_admin/admin/servers'
       path: '/servers'
@@ -519,11 +831,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAdminNodesRouteImport
       parentRoute: typeof AdminAdminRoute
     }
+    '/_admin/admin/nests': {
+      id: '/_admin/admin/nests'
+      path: '/nests'
+      fullPath: '/admin/nests'
+      preLoaderRoute: typeof AdminAdminNestsRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
+    '/_admin/admin/mounts': {
+      id: '/_admin/admin/mounts'
+      path: '/mounts'
+      fullPath: '/admin/mounts'
+      preLoaderRoute: typeof AdminAdminMountsRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
     '/_admin/admin/locations': {
       id: '/_admin/admin/locations'
       path: '/locations'
       fullPath: '/admin/locations'
       preLoaderRoute: typeof AdminAdminLocationsRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
+    '/_admin/admin/databases': {
+      id: '/_admin/admin/databases'
+      path: '/databases'
+      fullPath: '/admin/databases'
+      preLoaderRoute: typeof AdminAdminDatabasesRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
+    '/_admin/admin/api': {
+      id: '/_admin/admin/api'
+      path: '/api'
+      fullPath: '/admin/api'
+      preLoaderRoute: typeof AdminAdminApiRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
+    '/_admin/admin/allocations': {
+      id: '/_admin/admin/allocations'
+      path: '/allocations'
+      fullPath: '/admin/allocations'
+      preLoaderRoute: typeof AdminAdminAllocationsRouteImport
+      parentRoute: typeof AdminAdminRoute
+    }
+    '/_admin/admin/activity': {
+      id: '/_admin/admin/activity'
+      path: '/activity'
+      fullPath: '/admin/activity'
+      preLoaderRoute: typeof AdminAdminActivityRouteImport
       parentRoute: typeof AdminAdminRoute
     }
     '/_authed/server/$id/': {
@@ -532,6 +886,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/server/$id/'
       preLoaderRoute: typeof AuthedServerIdIndexRouteImport
       parentRoute: typeof AuthedServerIdRoute
+    }
+    '/_admin/admin/servers/': {
+      id: '/_admin/admin/servers/'
+      path: '/'
+      fullPath: '/admin/servers/'
+      preLoaderRoute: typeof AdminAdminServersIndexRouteImport
+      parentRoute: typeof AdminAdminServersRoute
+    }
+    '/_admin/admin/nodes/': {
+      id: '/_admin/admin/nodes/'
+      path: '/'
+      fullPath: '/admin/nodes/'
+      preLoaderRoute: typeof AdminAdminNodesIndexRouteImport
+      parentRoute: typeof AdminAdminNodesRoute
     }
     '/_authed/server/$id/users': {
       id: '/_authed/server/$id/users'
@@ -610,21 +978,226 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedServerIdActivityRouteImport
       parentRoute: typeof AuthedServerIdRoute
     }
+    '/_admin/admin/nodes/new': {
+      id: '/_admin/admin/nodes/new'
+      path: '/new'
+      fullPath: '/admin/nodes/new'
+      preLoaderRoute: typeof AdminAdminNodesNewRouteImport
+      parentRoute: typeof AdminAdminNodesRoute
+    }
+    '/_admin/admin/servers/view/$id': {
+      id: '/_admin/admin/servers/view/$id'
+      path: '/view/$id'
+      fullPath: '/admin/servers/view/$id'
+      preLoaderRoute: typeof AdminAdminServersViewIdRouteImport
+      parentRoute: typeof AdminAdminServersRoute
+    }
+    '/_admin/admin/nodes/view/$id': {
+      id: '/_admin/admin/nodes/view/$id'
+      path: '/view/$id'
+      fullPath: '/admin/nodes/view/$id'
+      preLoaderRoute: typeof AdminAdminNodesViewIdRouteImport
+      parentRoute: typeof AdminAdminNodesRoute
+    }
+    '/_admin/admin/servers/view/$id/': {
+      id: '/_admin/admin/servers/view/$id/'
+      path: '/'
+      fullPath: '/admin/servers/view/$id/'
+      preLoaderRoute: typeof AdminAdminServersViewIdIndexRouteImport
+      parentRoute: typeof AdminAdminServersViewIdRoute
+    }
+    '/_admin/admin/nodes/view/$id/': {
+      id: '/_admin/admin/nodes/view/$id/'
+      path: '/'
+      fullPath: '/admin/nodes/view/$id/'
+      preLoaderRoute: typeof AdminAdminNodesViewIdIndexRouteImport
+      parentRoute: typeof AdminAdminNodesViewIdRoute
+    }
+    '/_admin/admin/servers/view/$id/startup': {
+      id: '/_admin/admin/servers/view/$id/startup'
+      path: '/startup'
+      fullPath: '/admin/servers/view/$id/startup'
+      preLoaderRoute: typeof AdminAdminServersViewIdStartupRouteImport
+      parentRoute: typeof AdminAdminServersViewIdRoute
+    }
+    '/_admin/admin/servers/view/$id/mounts': {
+      id: '/_admin/admin/servers/view/$id/mounts'
+      path: '/mounts'
+      fullPath: '/admin/servers/view/$id/mounts'
+      preLoaderRoute: typeof AdminAdminServersViewIdMountsRouteImport
+      parentRoute: typeof AdminAdminServersViewIdRoute
+    }
+    '/_admin/admin/servers/view/$id/manage': {
+      id: '/_admin/admin/servers/view/$id/manage'
+      path: '/manage'
+      fullPath: '/admin/servers/view/$id/manage'
+      preLoaderRoute: typeof AdminAdminServersViewIdManageRouteImport
+      parentRoute: typeof AdminAdminServersViewIdRoute
+    }
+    '/_admin/admin/servers/view/$id/details': {
+      id: '/_admin/admin/servers/view/$id/details'
+      path: '/details'
+      fullPath: '/admin/servers/view/$id/details'
+      preLoaderRoute: typeof AdminAdminServersViewIdDetailsRouteImport
+      parentRoute: typeof AdminAdminServersViewIdRoute
+    }
+    '/_admin/admin/servers/view/$id/delete': {
+      id: '/_admin/admin/servers/view/$id/delete'
+      path: '/delete'
+      fullPath: '/admin/servers/view/$id/delete'
+      preLoaderRoute: typeof AdminAdminServersViewIdDeleteRouteImport
+      parentRoute: typeof AdminAdminServersViewIdRoute
+    }
+    '/_admin/admin/servers/view/$id/database': {
+      id: '/_admin/admin/servers/view/$id/database'
+      path: '/database'
+      fullPath: '/admin/servers/view/$id/database'
+      preLoaderRoute: typeof AdminAdminServersViewIdDatabaseRouteImport
+      parentRoute: typeof AdminAdminServersViewIdRoute
+    }
+    '/_admin/admin/servers/view/$id/build': {
+      id: '/_admin/admin/servers/view/$id/build'
+      path: '/build'
+      fullPath: '/admin/servers/view/$id/build'
+      preLoaderRoute: typeof AdminAdminServersViewIdBuildRouteImport
+      parentRoute: typeof AdminAdminServersViewIdRoute
+    }
+    '/_admin/admin/nodes/view/$id/settings': {
+      id: '/_admin/admin/nodes/view/$id/settings'
+      path: '/settings'
+      fullPath: '/admin/nodes/view/$id/settings'
+      preLoaderRoute: typeof AdminAdminNodesViewIdSettingsRouteImport
+      parentRoute: typeof AdminAdminNodesViewIdRoute
+    }
+    '/_admin/admin/nodes/view/$id/servers': {
+      id: '/_admin/admin/nodes/view/$id/servers'
+      path: '/servers'
+      fullPath: '/admin/nodes/view/$id/servers'
+      preLoaderRoute: typeof AdminAdminNodesViewIdServersRouteImport
+      parentRoute: typeof AdminAdminNodesViewIdRoute
+    }
+    '/_admin/admin/nodes/view/$id/configuration': {
+      id: '/_admin/admin/nodes/view/$id/configuration'
+      path: '/configuration'
+      fullPath: '/admin/nodes/view/$id/configuration'
+      preLoaderRoute: typeof AdminAdminNodesViewIdConfigurationRouteImport
+      parentRoute: typeof AdminAdminNodesViewIdRoute
+    }
+    '/_admin/admin/nodes/view/$id/allocation': {
+      id: '/_admin/admin/nodes/view/$id/allocation'
+      path: '/allocation'
+      fullPath: '/admin/nodes/view/$id/allocation'
+      preLoaderRoute: typeof AdminAdminNodesViewIdAllocationRouteImport
+      parentRoute: typeof AdminAdminNodesViewIdRoute
+    }
   }
 }
 
+interface AdminAdminNodesViewIdRouteChildren {
+  AdminAdminNodesViewIdAllocationRoute: typeof AdminAdminNodesViewIdAllocationRoute
+  AdminAdminNodesViewIdConfigurationRoute: typeof AdminAdminNodesViewIdConfigurationRoute
+  AdminAdminNodesViewIdServersRoute: typeof AdminAdminNodesViewIdServersRoute
+  AdminAdminNodesViewIdSettingsRoute: typeof AdminAdminNodesViewIdSettingsRoute
+  AdminAdminNodesViewIdIndexRoute: typeof AdminAdminNodesViewIdIndexRoute
+}
+
+const AdminAdminNodesViewIdRouteChildren: AdminAdminNodesViewIdRouteChildren = {
+  AdminAdminNodesViewIdAllocationRoute: AdminAdminNodesViewIdAllocationRoute,
+  AdminAdminNodesViewIdConfigurationRoute:
+    AdminAdminNodesViewIdConfigurationRoute,
+  AdminAdminNodesViewIdServersRoute: AdminAdminNodesViewIdServersRoute,
+  AdminAdminNodesViewIdSettingsRoute: AdminAdminNodesViewIdSettingsRoute,
+  AdminAdminNodesViewIdIndexRoute: AdminAdminNodesViewIdIndexRoute,
+}
+
+const AdminAdminNodesViewIdRouteWithChildren =
+  AdminAdminNodesViewIdRoute._addFileChildren(
+    AdminAdminNodesViewIdRouteChildren,
+  )
+
+interface AdminAdminNodesRouteChildren {
+  AdminAdminNodesNewRoute: typeof AdminAdminNodesNewRoute
+  AdminAdminNodesIndexRoute: typeof AdminAdminNodesIndexRoute
+  AdminAdminNodesViewIdRoute: typeof AdminAdminNodesViewIdRouteWithChildren
+}
+
+const AdminAdminNodesRouteChildren: AdminAdminNodesRouteChildren = {
+  AdminAdminNodesNewRoute: AdminAdminNodesNewRoute,
+  AdminAdminNodesIndexRoute: AdminAdminNodesIndexRoute,
+  AdminAdminNodesViewIdRoute: AdminAdminNodesViewIdRouteWithChildren,
+}
+
+const AdminAdminNodesRouteWithChildren = AdminAdminNodesRoute._addFileChildren(
+  AdminAdminNodesRouteChildren,
+)
+
+interface AdminAdminServersViewIdRouteChildren {
+  AdminAdminServersViewIdBuildRoute: typeof AdminAdminServersViewIdBuildRoute
+  AdminAdminServersViewIdDatabaseRoute: typeof AdminAdminServersViewIdDatabaseRoute
+  AdminAdminServersViewIdDeleteRoute: typeof AdminAdminServersViewIdDeleteRoute
+  AdminAdminServersViewIdDetailsRoute: typeof AdminAdminServersViewIdDetailsRoute
+  AdminAdminServersViewIdManageRoute: typeof AdminAdminServersViewIdManageRoute
+  AdminAdminServersViewIdMountsRoute: typeof AdminAdminServersViewIdMountsRoute
+  AdminAdminServersViewIdStartupRoute: typeof AdminAdminServersViewIdStartupRoute
+  AdminAdminServersViewIdIndexRoute: typeof AdminAdminServersViewIdIndexRoute
+}
+
+const AdminAdminServersViewIdRouteChildren: AdminAdminServersViewIdRouteChildren =
+  {
+    AdminAdminServersViewIdBuildRoute: AdminAdminServersViewIdBuildRoute,
+    AdminAdminServersViewIdDatabaseRoute: AdminAdminServersViewIdDatabaseRoute,
+    AdminAdminServersViewIdDeleteRoute: AdminAdminServersViewIdDeleteRoute,
+    AdminAdminServersViewIdDetailsRoute: AdminAdminServersViewIdDetailsRoute,
+    AdminAdminServersViewIdManageRoute: AdminAdminServersViewIdManageRoute,
+    AdminAdminServersViewIdMountsRoute: AdminAdminServersViewIdMountsRoute,
+    AdminAdminServersViewIdStartupRoute: AdminAdminServersViewIdStartupRoute,
+    AdminAdminServersViewIdIndexRoute: AdminAdminServersViewIdIndexRoute,
+  }
+
+const AdminAdminServersViewIdRouteWithChildren =
+  AdminAdminServersViewIdRoute._addFileChildren(
+    AdminAdminServersViewIdRouteChildren,
+  )
+
+interface AdminAdminServersRouteChildren {
+  AdminAdminServersIndexRoute: typeof AdminAdminServersIndexRoute
+  AdminAdminServersViewIdRoute: typeof AdminAdminServersViewIdRouteWithChildren
+}
+
+const AdminAdminServersRouteChildren: AdminAdminServersRouteChildren = {
+  AdminAdminServersIndexRoute: AdminAdminServersIndexRoute,
+  AdminAdminServersViewIdRoute: AdminAdminServersViewIdRouteWithChildren,
+}
+
+const AdminAdminServersRouteWithChildren =
+  AdminAdminServersRoute._addFileChildren(AdminAdminServersRouteChildren)
+
 interface AdminAdminRouteChildren {
+  AdminAdminActivityRoute: typeof AdminAdminActivityRoute
+  AdminAdminAllocationsRoute: typeof AdminAdminAllocationsRoute
+  AdminAdminApiRoute: typeof AdminAdminApiRoute
+  AdminAdminDatabasesRoute: typeof AdminAdminDatabasesRoute
   AdminAdminLocationsRoute: typeof AdminAdminLocationsRoute
-  AdminAdminNodesRoute: typeof AdminAdminNodesRoute
-  AdminAdminServersRoute: typeof AdminAdminServersRoute
+  AdminAdminMountsRoute: typeof AdminAdminMountsRoute
+  AdminAdminNestsRoute: typeof AdminAdminNestsRoute
+  AdminAdminNodesRoute: typeof AdminAdminNodesRouteWithChildren
+  AdminAdminServersRoute: typeof AdminAdminServersRouteWithChildren
+  AdminAdminSettingsRoute: typeof AdminAdminSettingsRoute
   AdminAdminUsersRoute: typeof AdminAdminUsersRoute
   AdminAdminIndexRoute: typeof AdminAdminIndexRoute
 }
 
 const AdminAdminRouteChildren: AdminAdminRouteChildren = {
+  AdminAdminActivityRoute: AdminAdminActivityRoute,
+  AdminAdminAllocationsRoute: AdminAdminAllocationsRoute,
+  AdminAdminApiRoute: AdminAdminApiRoute,
+  AdminAdminDatabasesRoute: AdminAdminDatabasesRoute,
   AdminAdminLocationsRoute: AdminAdminLocationsRoute,
-  AdminAdminNodesRoute: AdminAdminNodesRoute,
-  AdminAdminServersRoute: AdminAdminServersRoute,
+  AdminAdminMountsRoute: AdminAdminMountsRoute,
+  AdminAdminNestsRoute: AdminAdminNestsRoute,
+  AdminAdminNodesRoute: AdminAdminNodesRouteWithChildren,
+  AdminAdminServersRoute: AdminAdminServersRouteWithChildren,
+  AdminAdminSettingsRoute: AdminAdminSettingsRoute,
   AdminAdminUsersRoute: AdminAdminUsersRoute,
   AdminAdminIndexRoute: AdminAdminIndexRoute,
 }

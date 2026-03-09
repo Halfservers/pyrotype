@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../types/env'
 import { NotFoundError } from '../../utils/errors'
+import { sendServerInstalledEmail } from '../../services/mail/mailer'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -62,6 +63,21 @@ export async function reportInstallation(c: AppContext) {
       installedAt: new Date(),
     },
   })
+
+  // Notify the server owner by email on successful install — non-blocking
+  if (successful) {
+    const serverWithOwner = await prisma.server.findUnique({
+      where: { id: server.id },
+      include: { user: true },
+    })
+    if (serverWithOwner?.user?.email) {
+      sendServerInstalledEmail(
+        prisma,
+        serverWithOwner.user.email,
+        serverWithOwner.name,
+      ).catch(() => {})
+    }
+  }
 
   return c.body(null, 204)
 }

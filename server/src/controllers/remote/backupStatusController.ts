@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../types/env'
 import { NotFoundError, ForbiddenError, AppError } from '../../utils/errors'
+import { logActivity } from '../../services/activity'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -43,7 +44,12 @@ export async function reportBackupComplete(c: AppContext) {
     },
   })
 
-  // TODO: Activity log: server:backup.complete or server:backup.fail
+  await logActivity(prisma, {
+    event: successful ? 'server:backup.complete' : 'server:backup.fail',
+    ip: c.req.header('cf-connecting-ip') ?? '127.0.0.1',
+    serverId: backupModel.server.id,
+    properties: { backup_uuid: backupModel.uuid, name: backupModel.name },
+  })
 
   return c.body(null, 204)
 }
@@ -67,7 +73,12 @@ export async function reportBackupRestore(c: AppContext) {
     data: { status: null },
   })
 
-  // TODO: Activity log: server:backup.restore-complete or server:backup.restore-failed
+  await logActivity(prisma, {
+    event: 'server:backup.restore',
+    ip: c.req.header('cf-connecting-ip') ?? '127.0.0.1',
+    serverId: backupModel.server.id,
+    properties: { backup_uuid: backupModel.uuid },
+  })
 
   return c.body(null, 204)
 }
@@ -130,7 +141,12 @@ export async function deleteBackupRemote(c: AppContext) {
 
   await prisma.backup.delete({ where: { id: backupModel.id } })
 
-  // TODO: Activity log: server:backup.delete
+  await logActivity(prisma, {
+    event: 'server:backup.delete',
+    ip: c.req.header('cf-connecting-ip') ?? '127.0.0.1',
+    serverId: backupModel.server.id,
+    properties: { backup_uuid: backupModel.uuid },
+  })
 
   return c.body(null, 204)
 }

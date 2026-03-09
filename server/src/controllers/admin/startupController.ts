@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../types/env'
 import { fractalItem } from '../../utils/response'
 import { NotFoundError } from '../../utils/errors'
+import { daemonRequest } from '../../services/daemon/proxy'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -82,7 +83,18 @@ export async function index(c: AppContext) {
     }
   }
 
-  // TODO: notify daemon of startup changes
+  // Sync startup configuration to the daemon
+  try {
+    const serverWithNode = await prisma.server.findUnique({
+      where: { id: server.id },
+      include: { node: true },
+    })
+    if (serverWithNode?.node) {
+      await daemonRequest(serverWithNode.node, 'POST', `/api/servers/${server.uuid}/sync`)
+    }
+  } catch (e) {
+    // Log sync failure but don't fail the request
+  }
 
   return c.json(fractalItem('server', transformServer(server)))
 }

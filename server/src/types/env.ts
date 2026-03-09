@@ -4,6 +4,7 @@ export interface Env {
   JOB_QUEUE: Queue
   SERVER_CONSOLE: DurableObjectNamespace
   APP_KEY: string
+  APP_URL?: string
   NODE_ENV: string
   APP_VERSION?: string
 }

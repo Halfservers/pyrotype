@@ -12,6 +12,8 @@ import { useServerStore } from '@/store/server'
 import ConflictStateRenderer from '@/components/server/ConflictStateRenderer'
 import TransferListener from '@/components/server/transfer/TransferListener'
 import InstallListener from '@/components/server/InstallListener'
+import { motion, AnimatePresence } from '@/components/motion'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   SidebarProvider,
   Sidebar,
@@ -112,7 +114,11 @@ function ServerLayoutInner() {
   if (error) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-[#0a0a0a]">
-        <div className="text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center"
+        >
           <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
             <Terminal className="w-7 h-7 text-red-400" />
           </div>
@@ -121,15 +127,33 @@ function ServerLayoutInner() {
           <Link to="/" className="text-sm text-brand hover:underline">
             Return to Dashboard
           </Link>
-        </div>
+        </motion.div>
       </div>
     )
   }
 
   if (loading || !server) {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-[#0a0a0a]">
-        <div className="w-8 h-8 border-2 border-brand/30 border-t-brand rounded-full animate-spin" />
+      <div className="flex min-h-svh bg-[#0a0a0a]">
+        {/* Sidebar skeleton */}
+        <div className="hidden md:flex w-64 flex-col border-r border-white/[0.06] p-4 space-y-4">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-4 w-20" />
+          <div className="space-y-2 mt-6">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-8 w-full rounded-lg" />
+            ))}
+          </div>
+        </div>
+        {/* Content skeleton */}
+        <div className="flex-1 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-8 w-32" />
+          </div>
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+        </div>
       </div>
     )
   }
@@ -145,7 +169,17 @@ function ServerLayoutInner() {
         </header>
         <TransferListener />
         <ConflictStateRenderer>
-          <Outlet />
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </ConflictStateRenderer>
         <InstallListener />
       </SidebarInset>

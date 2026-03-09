@@ -30,5 +30,8 @@ class_name = "ServerConsole"
 tag = "v1"
 new_sqlite_classes = ["ServerConsole"]
 
+[triggers]
+crons = ["* * * * *"]
+
 [vars]
 NODE_ENV = "production"

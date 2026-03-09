@@ -115,3 +115,42 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(1 0 0 / 20%);
 }
+
+/* Focus-visible brand ring */
+*:focus-visible {
+  outline: 2px solid oklch(0.541 0.234 275 / 50%);
+  outline-offset: 2px;
+}
+
+/* Sidebar active item glow */
+[data-slot="sidebar-menu-button"][data-active="true"] {
+  position: relative;
+}
+[data-slot="sidebar-menu-button"][data-active="true"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: oklch(0.541 0.234 275 / 8%);
+  box-shadow: 0 0 12px oklch(0.541 0.234 275 / 10%), 0 0 4px oklch(0.541 0.234 275 / 6%);
+  pointer-events: none;
+}
+
+@layer utilities {
+  .glass {
+    background: oklch(1 0 0 / 3%);
+    border: 1px solid oklch(1 0 0 / 8%);
+    backdrop-filter: blur(12px);
+  }
+  .glass-hover {
+    transition: all 0.2s ease;
+  }
+  .glass-hover:hover {
+    background: oklch(1 0 0 / 6%);
+    border-color: oklch(1 0 0 / 12%);
+    box-shadow: 0 8px 32px oklch(0.541 0.234 275 / 8%);
+  }
+  .glow-brand {
+    box-shadow: 0 0 20px oklch(0.541 0.234 275 / 15%), 0 0 60px oklch(0.541 0.234 275 / 5%);
+  }
+}

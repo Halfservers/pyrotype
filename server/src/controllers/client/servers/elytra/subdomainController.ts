@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../../../types/env'
 import { ForbiddenError, AppError } from '../../../../utils/errors'
+import { createDnsRecord, deleteDnsRecord } from '../../../../services/subdomains'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -81,19 +82,33 @@ export async function createSubdomain(c: AppContext) {
     })
   }
 
-  // Create the new subdomain
-  // In production, this would also create DNS records through SubdomainManagementService
+  // Get server's allocation IP for DNS record
+  const allocation = await prisma.allocation.findFirst({
+    where: { serverId: server.id },
+  })
+  const serverIp = allocation?.ip ?? ''
+
+  // Create DNS record
+  const dnsResult = await createDnsRecord(domain, subdomain.toLowerCase(), serverIp)
+
+  // Create the new subdomain record
   const newSubdomain = await prisma.serverSubdomain.create({
     data: {
       serverId: server.id,
       domainId: domain_id,
       subdomain: subdomain.toLowerCase(),
       recordType: 'A',
-      dnsRecords: {},
+      dnsRecords: dnsResult.recordId ? { recordId: dnsResult.recordId } : {},
       isActive: true,
     },
     include: { domain: true },
   })
+
+  // If DNS creation failed, clean up the DB record and throw
+  if (!dnsResult.success && serverIp) {
+    await prisma.serverSubdomain.delete({ where: { id: newSubdomain.id } })
+    throw new AppError(`DNS record creation failed: ${dnsResult.error}`, 500, 'DnsError')
+  }
 
   return c.json({
     message: existing.length > 0 ? 'Subdomain replaced successfully.' : 'Subdomain created successfully.',
@@ -122,13 +137,21 @@ export async function destroySubdomain(c: AppContext) {
 
   const subdomains = await prisma.serverSubdomain.findMany({
     where: { serverId: server.id, isActive: true },
+    include: { domain: true },
   })
 
   if (subdomains.length === 0) {
     return c.json({ error: 'Server does not have any active subdomains.' }, 404)
   }
 
-  // In production, this would also delete DNS records
+  // Delete DNS records for each active subdomain
+  for (const sub of subdomains) {
+    const records = (sub.dnsRecords as any) ?? {}
+    if (records.recordId) {
+      await deleteDnsRecord(sub.domain, records.recordId)
+    }
+  }
+
   await prisma.serverSubdomain.updateMany({
     where: { serverId: server.id, isActive: true },
     data: { isActive: false },

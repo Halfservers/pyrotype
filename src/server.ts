@@ -1,7 +1,8 @@
 import startHandler from '@tanstack/react-start/server-entry'
 import { createApp } from '../server/src/app'
 import type { Env } from '../server/src/types/env'
-import type { JobPayload } from '../server/src/config/queue'
+import { createPrisma } from '../server/src/config/database'
+import { handleQueueBatch, type JobMessage } from '../server/src/jobs'
 
 // Re-export Durable Object class (required by wrangler for DO bindings)
 export { ServerConsole } from '../server/src/durable-objects/ServerConsole'
@@ -21,14 +22,8 @@ export default {
     return startHandler.fetch(request, env, ctx)
   },
 
-  async queue(batch: MessageBatch<JobPayload>, env: Env): Promise<void> {
-    for (const msg of batch.messages) {
-      try {
-        console.log(`Processing job: ${msg.body.type}`)
-        msg.ack()
-      } catch {
-        msg.retry()
-      }
-    }
+  async queue(batch: MessageBatch<JobMessage>, env: Env): Promise<void> {
+    const prisma = createPrisma(env.DB)
+    await handleQueueBatch(batch, env, prisma)
   },
 }

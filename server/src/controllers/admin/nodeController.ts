@@ -4,6 +4,7 @@ import { fractalItem, fractalPaginated } from '../../utils/response'
 import { paginationSchema, getPaginationOffset } from '../../utils/pagination'
 import { NotFoundError, ConflictError } from '../../utils/errors'
 import { generateUuid } from '../../utils/crypto'
+import { daemonRequest, DaemonConnectionError } from '../../services/daemon/proxy'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -47,11 +48,13 @@ export async function index(c: AppContext) {
   const filterName = c.req.query('filter[name]')
   const filterFqdn = c.req.query('filter[fqdn]')
   const filterUuid = c.req.query('filter[uuid]')
+  const filterDaemonTokenId = c.req.query('filter[daemon_token_id]')
 
   const where: any = {}
   if (filterName) where.name = { contains: filterName }
   if (filterFqdn) where.fqdn = { contains: filterFqdn }
   if (filterUuid) where.uuid = { contains: filterUuid }
+  if (filterDaemonTokenId) where.daemonTokenId = filterDaemonTokenId
 
   const sort = c.req.query('sort')
   const orderBy: any = {}
@@ -170,6 +173,36 @@ export async function update(c: AppContext) {
 
   const node = await prisma.node.update({ where: { id }, data })
   return c.json(fractalItem('node', transformNode(node)))
+}
+
+export async function systemInfo(c: AppContext) {
+  const prisma = c.var.prisma
+  const id = parseInt(c.req.param('id'), 10)
+  const node = await prisma.node.findUnique({ where: { id } })
+  if (!node) throw new NotFoundError('Node not found')
+
+  try {
+    const data = await daemonRequest<Record<string, unknown>>(node, 'GET', '/api/system')
+    return c.json(data)
+  } catch (err) {
+    if (err instanceof DaemonConnectionError) {
+      return c.json({ error: 'Unable to connect to daemon' }, 502)
+    }
+    throw err
+  }
+}
+
+export async function autoDeployToken(c: AppContext) {
+  const prisma = c.var.prisma
+  const id = parseInt(c.req.param('id'), 10)
+  const node = await prisma.node.findUnique({ where: { id } })
+  if (!node) throw new NotFoundError('Node not found')
+
+  // Return only the public token identifier — never expose the raw daemonToken secret
+  return c.json({
+    node: node.id,
+    token: node.daemonTokenId,
+  })
 }
 
 export async function deleteNode(c: AppContext) {

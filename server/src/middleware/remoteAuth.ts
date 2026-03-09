@@ -11,21 +11,27 @@ export const authenticateDaemonToken: MiddlewareHandler<AppEnv> = async (c, next
     throw new AuthenticationError('Missing or invalid authorization header.')
   }
 
-  const token = authHeader.slice(7)
+  const bearer = authHeader.slice(7)
 
-  if (token.length < 16) {
+  // Wings sends "Bearer <token_id>.<token>" where token_id is the 16-char identifier
+  const dotIndex = bearer.indexOf('.')
+  if (dotIndex === -1) {
     throw new AuthenticationError('Invalid daemon token format.')
   }
 
-  // The first 16 characters of the token serve as the token identifier
-  const tokenId = token.substring(0, 16)
+  const tokenId = bearer.substring(0, dotIndex)
+  const tokenSecret = bearer.substring(dotIndex + 1)
+
+  if (!tokenId || !tokenSecret) {
+    throw new AuthenticationError('Invalid daemon token format.')
+  }
 
   const prisma = c.var.prisma
   const node = await prisma.node.findFirst({
     where: { daemonTokenId: tokenId },
   })
 
-  if (!node || node.daemonToken !== token) {
+  if (!node || node.daemonToken !== tokenSecret) {
     throw new AuthenticationError('Authorization credentials were not correct.')
   }
 

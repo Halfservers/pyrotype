@@ -3,6 +3,7 @@ import type { Env, HonoVariables } from '../../../../types/env'
 import { z } from 'zod'
 import { fractalList, fractalItem } from '../../../../utils/response'
 import { NotFoundError, AppError } from '../../../../utils/errors'
+import { logActivity } from '../../../../services/activity'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -43,6 +44,7 @@ export async function index(c: AppContext) {
 export async function store(c: AppContext) {
   const serverId = c.req.param('server')
   const prisma = c.var.prisma
+  const user = c.var.user!
   const body = storeDatabaseSchema.parse(await c.req.json())
 
   const server: any = await prisma.server.findFirst({
@@ -64,6 +66,10 @@ export async function store(c: AppContext) {
   const username = `u${server.id}_${crypto.randomUUID().slice(0, 8)}`.slice(0, 100)
   const password = crypto.randomUUID()
 
+  // Note: Actual MySQL user/database provisioning on the remote host cannot be
+  // performed from Cloudflare Workers due to the lack of raw TCP socket support.
+  // The database record is created in the panel DB; provisioning must be handled
+  // by a separate worker or the daemon.
   const database = await prisma.database.create({
     data: {
       serverId: server.id,
@@ -76,14 +82,31 @@ export async function store(c: AppContext) {
     include: { host: true },
   })
 
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:database.create',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { database: database.database },
+  })
+
   return c.json({
     ...fractalItem('database', transformDatabase(database)),
   })
 }
 
 export async function rotatePassword(c: AppContext) {
+  const serverId = c.req.param('server')
   const databaseId = parseInt(c.req.param('database'), 10)
   const prisma = c.var.prisma
+  const user = c.var.user!
+
+  const server = await prisma.server.findFirst({
+    where: { OR: [{ uuidShort: serverId }, { uuid: serverId }] },
+  })
+
+  if (!server) throw new NotFoundError('Server not found')
 
   const database = await prisma.database.findUnique({
     where: { id: databaseId },
@@ -94,10 +117,21 @@ export async function rotatePassword(c: AppContext) {
 
   const newPassword = crypto.randomUUID()
 
+  // Note: The password is updated in the panel DB only. Actual MySQL password
+  // rotation on the remote host requires a separate provisioning mechanism.
   const updated = await prisma.database.update({
     where: { id: databaseId },
     data: { password: newPassword },
     include: { host: true },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:database.rotate-password',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { database: database.database },
   })
 
   return c.json(fractalItem('database', {
@@ -107,13 +141,30 @@ export async function rotatePassword(c: AppContext) {
 }
 
 export async function deleteFn(c: AppContext) {
+  const serverId = c.req.param('server')
   const databaseId = parseInt(c.req.param('database'), 10)
   const prisma = c.var.prisma
+  const user = c.var.user!
+
+  const server = await prisma.server.findFirst({
+    where: { OR: [{ uuidShort: serverId }, { uuid: serverId }] },
+  })
+
+  if (!server) throw new NotFoundError('Server not found')
 
   const database = await prisma.database.findUnique({ where: { id: databaseId } })
   if (!database) throw new NotFoundError('Database not found')
 
   await prisma.database.delete({ where: { id: databaseId } })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:database.delete',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { database: database.database },
+  })
 
   return c.body(null, 204)
 }

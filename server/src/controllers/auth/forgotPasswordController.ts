@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../types/env'
 import { generateToken } from '../../utils/crypto'
 import { logger } from '../../config/logger'
+import { sendPasswordResetEmail } from '../../services/mail/mailer'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -31,8 +32,11 @@ export async function sendResetLink(c: AppContext) {
       },
     })
 
-    // In production, send email. For now, log the token.
-    logger.info(`Password reset token generated for ${email}: ${token}`)
+    // Send the reset email (non-blocking: don't fail the request if mail fails)
+    const sent = await sendPasswordResetEmail(prisma, email, token)
+    if (!sent) {
+      logger.warn(`Failed to send password reset email to ${email}`)
+    }
   }
 
   // Always return success to avoid revealing whether the email exists

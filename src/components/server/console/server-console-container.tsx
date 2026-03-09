@@ -9,6 +9,7 @@ import { SocketEvent, SocketRequest } from '@/lib/websocket/events';
 import { useServerStore } from '@/store/server';
 import { useWebsocketEvent } from '@/lib/hooks';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { motion, staggerContainer, staggerItem } from '@/components/motion';
 
 const StatGraphs = lazy(() => import('@/components/server/console/stat-graphs'));
 
@@ -50,9 +51,14 @@ const ServerConsoleContainer = () => {
 
   return (
     <ServerContentBlock title='Home'>
-      <div className='w-full h-full min-h-full flex-1 flex flex-col px-2 sm:px-0'>
+      <motion.div
+        variants={staggerContainer}
+        initial='hidden'
+        animate='show'
+        className='w-full h-full min-h-full flex-1 flex flex-col px-2 sm:px-0'
+      >
         {(isNodeUnderMaintenance || isTransferring) && (
-          <div className='mb-3 sm:mb-4'>
+          <motion.div variants={staggerItem} className='mb-3 sm:mb-4'>
             <Alert variant='destructive'>
               <AlertDescription>
                 {isNodeUnderMaintenance
@@ -60,10 +66,10 @@ const ServerConsoleContainer = () => {
                   : 'This server is currently being transferred to another node and all actions are unavailable.'}
               </AlertDescription>
             </Alert>
-          </div>
+          </motion.div>
         )}
 
-        <div className='mb-3 sm:mb-4'>
+        <motion.div variants={staggerItem} className='mb-3 sm:mb-4'>
           <div className='flex items-center justify-between'>
             <div>
               <h1 className='text-2xl font-bold text-white'>{name}</h1>
@@ -73,34 +79,34 @@ const ServerConsoleContainer = () => {
             </div>
             <PowerButtons className='flex gap-1 items-center justify-center' />
           </div>
-        </div>
+        </motion.div>
 
         {description && (
-          <div className='mb-3 sm:mb-4'>
-            <div className='bg-gradient-to-b from-[#ffffff08] to-[#ffffff05] border border-[#ffffff12] rounded-xl p-3 sm:p-4 hover:border-[#ffffff20] transition-all duration-150 shadow-sm'>
+          <motion.div variants={staggerItem} className='mb-3 sm:mb-4'>
+            <div className='glass glass-hover rounded-xl p-3 sm:p-4 shadow-sm'>
               <p className='text-sm text-zinc-300 leading-relaxed'>{description}</p>
             </div>
-          </div>
+          </motion.div>
         )}
 
         <div className='flex flex-col gap-3 sm:gap-4'>
-          <div className='bg-gradient-to-b from-[#ffffff08] to-[#ffffff05] border border-[#ffffff12] rounded-xl p-3 sm:p-4 hover:border-[#ffffff20] transition-all duration-150 shadow-sm'>
+          <motion.div variants={staggerItem} className='glass glass-hover rounded-xl p-3 sm:p-4 shadow-sm'>
             <ServerDetailsBlock />
-          </div>
+          </motion.div>
 
-          <div className='bg-gradient-to-b from-[#ffffff08] to-[#ffffff05] border border-[#ffffff12] rounded-xl p-3 sm:p-4 hover:border-[#ffffff20] transition-all duration-150 shadow-sm'>
+          <motion.div variants={staggerItem} className='glass glass-hover rounded-xl p-3 sm:p-4 shadow-sm'>
             <Console />
-          </div>
+          </motion.div>
 
-          <div className='bg-gradient-to-b from-[#ffffff08] to-[#ffffff05] border border-[#ffffff12] rounded-xl p-3 sm:p-4 hover:border-[#ffffff20] transition-all duration-150 shadow-sm'>
+          <motion.div variants={staggerItem} className='glass glass-hover rounded-xl p-3 sm:p-4 shadow-sm'>
             <div className='grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4'>
               <Suspense fallback={<div className='h-48 animate-pulse bg-zinc-800 rounded col-span-3' />}>
                 <StatGraphs />
               </Suspense>
             </div>
-          </div>
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
     </ServerContentBlock>
   );
 };

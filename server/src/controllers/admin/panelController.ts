@@ -6,11 +6,12 @@ type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 export async function status(c: AppContext) {
   const prisma = c.var.prisma
 
-  const [serverCount, userCount, nodeCount, nestCount] = await Promise.all([
+  const [serverCount, userCount, nodeCount, nestCount, databaseHostCount] = await Promise.all([
     prisma.server.count(),
     prisma.user.count(),
     prisma.node.count(),
     prisma.nest.count(),
+    prisma.databaseHost.count(),
   ])
 
   return c.json({
@@ -21,6 +22,7 @@ export async function status(c: AppContext) {
       users: userCount,
       nodes: nodeCount,
       nests: nestCount,
+      database_hosts: databaseHostCount,
     },
   })
 }

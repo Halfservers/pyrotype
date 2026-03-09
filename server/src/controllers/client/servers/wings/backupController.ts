@@ -4,6 +4,11 @@ import { z } from 'zod'
 import { fractalPaginated, fractalItem } from '../../../../utils/response'
 import { NotFoundError, AppError, ServerStateConflictError } from '../../../../utils/errors'
 import { paginationSchema, getPaginationOffset } from '../../../../utils/pagination'
+import { getWingsClient } from '../../../../services/wings/client'
+import { createDaemonToken } from '../../../../services/auth/daemonToken'
+import { logActivity } from '../../../../services/activity'
+import { deleteBackupFromDaemon, rotateOldestBackup } from '../../../../services/backups'
+import { daemonRequest } from '../../../../services/daemon/proxy'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -68,6 +73,7 @@ export async function index(c: AppContext) {
 export async function store(c: AppContext) {
   const serverId = c.req.param('server')
   const prisma = c.var.prisma
+  const user = c.var.user!
   const body = storeBackupSchema.parse(await c.req.json())
 
   const server = await prisma.server.findFirst({
@@ -81,7 +87,13 @@ export async function store(c: AppContext) {
   })
 
   if (server.backupLimit !== null && existingCount >= server.backupLimit) {
-    throw new AppError('Backup limit reached', 400, 'TooManyBackups')
+    // Rotate oldest unlocked backup to make room
+    const node = await prisma.node.findUnique({ where: { id: server.nodeId } })
+    if (node) {
+      await rotateOldestBackup(prisma, server.id, node, server.uuid)
+    } else {
+      throw new AppError('Backup limit reached', 400, 'TooManyBackups')
+    }
   }
 
   const backup = await prisma.backup.create({
@@ -94,6 +106,29 @@ export async function store(c: AppContext) {
       disk: 'wings',
       bytes: BigInt(0),
     },
+  })
+
+  // Instruct daemon to start the backup
+  const node = await prisma.node.findUnique({ where: { id: server.nodeId } })
+  if (node) {
+    try {
+      await daemonRequest(node, 'POST', `/api/servers/${server.uuid}/backup`, {
+        adapter: 'wings',
+        uuid: backup.uuid,
+        ignored_files: backup.ignoredFiles ?? [],
+      })
+    } catch {
+      // Daemon unreachable — backup record exists, daemon will pick it up later
+    }
+  }
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.create',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { name: body.name },
   })
 
   return c.json(fractalItem('backup', transformBackup(backup)))
@@ -112,6 +147,8 @@ export async function view(c: AppContext) {
 export async function toggleLock(c: AppContext) {
   const backupUuid = c.req.param('backup')
   const prisma = c.var.prisma
+  const user = c.var.user!
+
   const backup = await prisma.backup.findUnique({ where: { uuid: backupUuid } })
 
   if (!backup) throw new NotFoundError('Backup not found')
@@ -121,20 +158,55 @@ export async function toggleLock(c: AppContext) {
     data: { isLocked: !backup.isLocked },
   })
 
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.lock',
+    ip,
+    userId: user.id,
+    serverId: backup.serverId,
+    properties: { locked: !backup.isLocked },
+  })
+
   return c.json(fractalItem('backup', transformBackup(updated)))
 }
 
 export async function download(c: AppContext) {
   const backupUuid = c.req.param('backup')
+  const serverId = c.req.param('server')
   const prisma = c.var.prisma
+  const user = c.var.user!
+
+  const server: any = await prisma.server.findFirst({
+    where: { OR: [{ uuidShort: serverId }, { uuid: serverId }] },
+    include: { node: true },
+  })
+
+  if (!server) throw new NotFoundError('Server not found')
+
   const backup = await prisma.backup.findUnique({ where: { uuid: backupUuid } })
 
   if (!backup) throw new NotFoundError('Backup not found')
 
-  // TODO: Generate signed download URL from Wings/S3
+  const node = server.node!
+  const token = await createDaemonToken(node, user, {
+    server_uuid: server.uuid,
+    backup_uuid: backup.uuid,
+  })
+
+  const url = `${node.scheme}://${node.fqdn}:${node.daemonListen}/download/backup?token=${token}`
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.download',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup: backup.uuid },
+  })
+
   return c.json({
     object: 'signed_url',
-    attributes: { url: '' },
+    attributes: { url },
   })
 }
 
@@ -142,9 +214,14 @@ export async function restore(c: AppContext) {
   const serverId = c.req.param('server')
   const backupUuid = c.req.param('backup')
   const prisma = c.var.prisma
+  const user = c.var.user!
 
-  const server = await prisma.server.findFirst({
+  const body = await c.req.json().catch(() => ({}))
+  const truncateDirectory = body?.truncate ?? false
+
+  const server: any = await prisma.server.findFirst({
     where: { OR: [{ uuidShort: serverId }, { uuid: serverId }] },
+    include: { node: true },
   })
 
   if (!server) throw new NotFoundError('Server not found')
@@ -165,7 +242,17 @@ export async function restore(c: AppContext) {
     data: { status: 'restoring_backup' },
   })
 
-  // TODO: Dispatch restore to Wings daemon
+  const wings = getWingsClient(server.node!)
+  await wings.restoreBackup(server.uuid, backup.uuid, backup.disk, truncateDirectory)
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.restore',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { backup: backup.uuid },
+  })
 
   return c.body(null, 204)
 }
@@ -173,14 +260,34 @@ export async function restore(c: AppContext) {
 export async function deleteFn(c: AppContext) {
   const backupUuid = c.req.param('backup')
   const prisma = c.var.prisma
-  const backup = await prisma.backup.findUnique({ where: { uuid: backupUuid } })
+  const user = c.var.user!
+
+  const backup = await prisma.backup.findUnique({
+    where: { uuid: backupUuid },
+    include: { server: { include: { node: true } } },
+  })
 
   if (!backup) throw new NotFoundError('Backup not found')
+
+  // Delete from daemon first
+  const server = (backup as any).server
+  if (server?.node) {
+    await deleteBackupFromDaemon(server.node, server.uuid, backup.uuid)
+  }
 
   // Soft delete
   await prisma.backup.update({
     where: { uuid: backupUuid },
     data: { deletedAt: new Date() },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:backup.delete',
+    ip,
+    userId: user.id,
+    serverId: backup.serverId,
+    properties: { backup: backup.uuid },
   })
 
   return c.body(null, 204)

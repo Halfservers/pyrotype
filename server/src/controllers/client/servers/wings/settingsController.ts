@@ -2,6 +2,9 @@ import type { Context } from 'hono'
 import type { Env, HonoVariables } from '../../../../types/env'
 import { z } from 'zod'
 import { NotFoundError, AppError } from '../../../../utils/errors'
+import { getWingsClient } from '../../../../services/wings/client'
+import { logActivity } from '../../../../services/activity'
+import { enqueueJob } from '../../../../jobs'
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
@@ -43,6 +46,7 @@ async function resolveServer(c: AppContext): Promise<any> {
 export async function rename(c: AppContext) {
   const server = await resolveServer(c)
   const prisma = c.var.prisma
+  const user = c.var.user!
   const body = renameSchema.parse(await c.req.json())
 
   await prisma.server.update({
@@ -53,19 +57,38 @@ export async function rename(c: AppContext) {
     },
   })
 
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:settings.rename',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { name: body.name },
+  })
+
   return c.body(null, 204)
 }
 
 export async function reinstall(c: AppContext) {
   const server = await resolveServer(c)
   const prisma = c.var.prisma
+  const user = c.var.user!
 
   await prisma.server.update({
     where: { id: server.id },
     data: { status: 'installing', installedAt: null },
   })
 
-  // TODO: Dispatch reinstall to Wings daemon
+  const wings = getWingsClient(server.node!)
+  await wings.reinstallServer(server.uuid)
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:reinstall',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+  })
 
   return c.json([], 202)
 }
@@ -73,6 +96,7 @@ export async function reinstall(c: AppContext) {
 export async function dockerImage(c: AppContext) {
   const server = await resolveServer(c)
   const prisma = c.var.prisma
+  const user = c.var.user!
   const body = dockerImageSchema.parse(await c.req.json())
 
   const allowedImages = Object.values(server.egg?.dockerImages as Record<string, string> ?? {})
@@ -85,12 +109,22 @@ export async function dockerImage(c: AppContext) {
     data: { image: body.docker_image },
   })
 
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:settings.docker-image',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { docker_image: body.docker_image },
+  })
+
   return c.body(null, 204)
 }
 
 export async function changeEgg(c: AppContext) {
   const server = await resolveServer(c)
   const prisma = c.var.prisma
+  const user = c.var.user!
   const body = changeEggSchema.parse(await c.req.json())
 
   if (server.eggId !== body.egg_id || server.nestId !== body.nest_id) {
@@ -106,6 +140,15 @@ export async function changeEgg(c: AppContext) {
       },
     })
   }
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:settings.egg-change',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { egg_id: body.egg_id, nest_id: body.nest_id },
+  })
 
   return c.body(null, 204)
 }
@@ -171,7 +214,19 @@ export async function applyEggChange(c: AppContext) {
     },
   })
 
-  // TODO: Dispatch async egg change job
+  await enqueueJob(c.var.queue, {
+    type: 'schedule',
+    data: { type: 'server.egg-change', serverId: server.id, operationId },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:settings.egg-change',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { egg_id: body.egg_id, operation_id: operationId },
+  })
 
   return c.json({
     operation_id: operationId,

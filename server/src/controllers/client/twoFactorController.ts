@@ -8,6 +8,7 @@ import {
   generateRecoveryTokens,
 } from '../../services/auth/twoFactor';
 import { AppError } from '../../utils/errors';
+import { logActivity } from '../../services/activity';
 
 type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>;
 
@@ -85,6 +86,12 @@ export async function store(c: AppContext) {
     ),
   ]);
 
+  await logActivity(prisma, {
+    event: 'user:two-factor.create',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '127.0.0.1',
+    userId: user.id,
+  });
+
   return c.json({
     object: 'recovery_tokens',
     attributes: {
@@ -117,6 +124,12 @@ export async function deleteTwoFactor(c: AppContext) {
     }),
     prisma.recoveryToken.deleteMany({ where: { userId: user.id } }),
   ]);
+
+  await logActivity(prisma, {
+    event: 'user:two-factor.delete',
+    ip: c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '127.0.0.1',
+    userId: user.id,
+  });
 
   return c.body(null, 204);
 }

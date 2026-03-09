@@ -40,7 +40,11 @@ function RootComponent() {
           unstyled: true,
           classNames: {
             toast:
-              'p-4 bg-[#ffffff09] border border-[#ffffff12] rounded-2xl shadow-lg backdrop-blur-2xl flex items-center w-full gap-2',
+              'p-4 bg-white/[0.03] border border-white/[0.08] rounded-2xl shadow-lg backdrop-blur-2xl flex items-center w-full gap-2',
+            success: 'border-emerald-500/20',
+            error: 'border-red-500/20',
+            warning: 'border-amber-500/20',
+            info: 'border-brand/20',
           },
         }}
       />
