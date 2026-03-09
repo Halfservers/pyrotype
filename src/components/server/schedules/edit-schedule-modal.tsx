@@ -1,15 +1,13 @@
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from '@tanstack/react-form';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 
 import { useServerStore } from '@/store/server';
 import type { Schedule } from '@/store/server';
-import { createScheduleSchema, type CreateScheduleData } from '@/lib/validators';
 import { useCreateScheduleMutation } from '@/lib/queries';
 import { useFlashKey } from '@/lib/hooks';
 
@@ -24,8 +22,7 @@ const EditScheduleModal = ({ schedule, visible, onModalDismissed }: Props) => {
   const { clearFlashes, clearAndAddHttpError } = useFlashKey('schedule:edit');
   const createMutation = useCreateScheduleMutation(serverId);
 
-  const form = useForm<CreateScheduleData>({
-    resolver: zodResolver(createScheduleSchema),
+  const form = useForm({
     defaultValues: {
       name: schedule?.name || '',
       minute: schedule?.cron.minute || '*/5',
@@ -36,33 +33,32 @@ const EditScheduleModal = ({ schedule, visible, onModalDismissed }: Props) => {
       enabled: schedule?.isActive ?? true,
       onlyWhenOnline: schedule?.onlyWhenOnline ?? true,
     },
+    onSubmit: ({ value }) => {
+      clearFlashes();
+      createMutation.mutate(
+        {
+          id: schedule?.id,
+          name: value.name,
+          cron: {
+            minute: value.minute,
+            hour: value.hour,
+            dayOfWeek: value.dayOfWeek,
+            month: value.month,
+            dayOfMonth: value.dayOfMonth,
+          },
+          onlyWhenOnline: value.onlyWhenOnline,
+          isActive: value.enabled,
+        },
+        {
+          onSuccess: () => {
+            onModalDismissed();
+            form.reset();
+          },
+          onError: (error) => clearAndAddHttpError(error),
+        },
+      );
+    },
   });
-
-  const onSubmit = (values: CreateScheduleData) => {
-    clearFlashes();
-    createMutation.mutate(
-      {
-        id: schedule?.id,
-        name: values.name,
-        cron: {
-          minute: values.minute,
-          hour: values.hour,
-          dayOfWeek: values.dayOfWeek,
-          month: values.month,
-          dayOfMonth: values.dayOfMonth,
-        },
-        onlyWhenOnline: values.onlyWhenOnline,
-        isActive: values.enabled,
-      },
-      {
-        onSuccess: () => {
-          onModalDismissed();
-          form.reset();
-        },
-        onError: (error) => clearAndAddHttpError(error),
-      },
-    );
-  };
 
   return (
     <Dialog open={visible} onOpenChange={(open) => !open && onModalDismissed()}>
@@ -70,90 +66,89 @@ const EditScheduleModal = ({ schedule, visible, onModalDismissed }: Props) => {
         <DialogHeader>
           <DialogTitle>{schedule ? 'Edit schedule' : 'Create new schedule'}</DialogTitle>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
-            <FormField
-              control={form.control}
-              name='name'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Schedule name</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder='A human readable identifier' />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+        <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }} className='space-y-6'>
+          <form.Field
+            name='name'
+            children={(field) => (
+              <div className='space-y-2'>
+                <Label>Schedule name</Label>
+                <Input
+                  value={field.state.value}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  onBlur={field.handleBlur}
+                  placeholder='A human readable identifier'
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className='text-sm text-destructive'>{field.state.meta.errors.map(String).join(', ')}</p>
+                )}
+              </div>
+            )}
+          />
+
+          <div className='grid grid-cols-2 sm:grid-cols-5 gap-4'>
+            {(['minute', 'hour', 'dayOfWeek', 'dayOfMonth', 'month'] as const).map((name) => (
+              <form.Field
+                key={name}
+                name={name}
+                children={(field) => (
+                  <div className='space-y-2'>
+                    <Label className='capitalize'>{name === 'dayOfWeek' ? 'Day of week' : name === 'dayOfMonth' ? 'Day of month' : name}</Label>
+                    <Input
+                      value={field.state.value as string}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      onBlur={field.handleBlur}
+                    />
+                    {field.state.meta.errors.length > 0 && (
+                      <p className='text-sm text-destructive'>{field.state.meta.errors.map(String).join(', ')}</p>
+                    )}
+                  </div>
+                )}
+              />
+            ))}
+          </div>
+
+          <p className='text-zinc-400 text-xs'>
+            The schedule system uses Cronjob syntax when defining when tasks should begin running.
+          </p>
+
+          <div className='space-y-3'>
+            <a href='https://crontab.guru/' target='_blank' rel='noreferrer' className='text-sm text-brand hover:underline'>
+              Crontab Guru - Online cron expression editor
+            </a>
+
+            <form.Field
+              name='onlyWhenOnline'
+              children={(field) => (
+                <div className='flex flex-row items-center justify-between rounded-lg border p-3'>
+                  <div className='space-y-0.5'>
+                    <Label>Only When Server Is Online</Label>
+                    <p className='text-sm text-muted-foreground'>Only execute this schedule when the server is running.</p>
+                  </div>
+                  <Switch checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
+                </div>
               )}
             />
 
-            <div className='grid grid-cols-2 sm:grid-cols-5 gap-4'>
-              {(['minute', 'hour', 'dayOfWeek', 'dayOfMonth', 'month'] as const).map((name) => (
-                <FormField
-                  key={name}
-                  control={form.control}
-                  name={name}
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className='capitalize'>{name === 'dayOfWeek' ? 'Day of week' : name === 'dayOfMonth' ? 'Day of month' : name}</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              ))}
-            </div>
+            <form.Field
+              name='enabled'
+              children={(field) => (
+                <div className='flex flex-row items-center justify-between rounded-lg border p-3'>
+                  <div className='space-y-0.5'>
+                    <Label>Schedule Enabled</Label>
+                    <p className='text-sm text-muted-foreground'>This schedule will be executed automatically if enabled.</p>
+                  </div>
+                  <Switch checked={field.state.value} onCheckedChange={(checked) => field.handleChange(checked)} />
+                </div>
+              )}
+            />
+          </div>
 
-            <p className='text-zinc-400 text-xs'>
-              The schedule system uses Cronjob syntax when defining when tasks should begin running.
-            </p>
-
-            <div className='space-y-3'>
-              <a href='https://crontab.guru/' target='_blank' rel='noreferrer' className='text-sm text-brand hover:underline'>
-                Crontab Guru - Online cron expression editor
-              </a>
-
-              <FormField
-                control={form.control}
-                name='onlyWhenOnline'
-                render={({ field }) => (
-                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3'>
-                    <div className='space-y-0.5'>
-                      <FormLabel>Only When Server Is Online</FormLabel>
-                      <FormDescription>Only execute this schedule when the server is running.</FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name='enabled'
-                render={({ field }) => (
-                  <FormItem className='flex flex-row items-center justify-between rounded-lg border p-3'>
-                    <div className='space-y-0.5'>
-                      <FormLabel>Schedule Enabled</FormLabel>
-                      <FormDescription>This schedule will be executed automatically if enabled.</FormDescription>
-                    </div>
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className='text-right'>
-              <Button type='submit' disabled={createMutation.isPending}>
-                {schedule ? 'Save changes' : 'Create schedule'}
-              </Button>
-            </div>
-          </form>
-        </Form>
+          <div className='text-right'>
+            <Button type='submit' disabled={createMutation.isPending}>
+              {schedule ? 'Save changes' : 'Create schedule'}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

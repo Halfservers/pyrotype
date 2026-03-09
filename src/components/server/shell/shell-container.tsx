@@ -25,7 +25,7 @@ import Spinner from '@/components/elements/spinner';
 
 import { useServerStore } from '@/store/server';
 import { useServerStartupQuery } from '@/lib/queries';
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 
 // Types
@@ -89,28 +89,27 @@ type FlowStep = 'overview' | 'select-game' | 'select-software' | 'configure' | '
 
 // API calls
 const getNests = async (): Promise<Nest[]> => {
-  const { data } = await http.get(`/api/client/servers/${getGlobalDaemonType()}/nests`);
+  const data = await api.get<any>(`/api/client/servers/${getGlobalDaemonType()}/nests`);
   return data.data || [];
 };
 
 const previewEggChange = async (uuid: string, eggId: number, nestId: number): Promise<EggPreview> => {
-  const { data } = await http.get(
+  const data = await api.get<EggPreview>(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/egg-change/preview`,
-    { params: { egg_id: eggId, nest_id: nestId } },
+    { egg_id: eggId, nest_id: nestId },
   );
   return data;
 };
 
 const applyEggChange = async (uuid: string, params: Record<string, unknown>): Promise<{ operation_id: string }> => {
-  const { data } = await http.post(
+  return api.post<{ operation_id: string }>(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/egg-change`,
     params,
   );
-  return data;
 };
 
 const applyEggChangeSync = async (uuid: string, params: Record<string, unknown>): Promise<void> => {
-  await http.post(
+  await api.post(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/egg-change/sync`,
     params,
   );

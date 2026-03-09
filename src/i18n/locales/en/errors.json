@@ -1,0 +1,11 @@
+{
+  "validationError": "Validation Error",
+  "notFound": "Not Found",
+  "unauthorized": "Unauthorized",
+  "forbidden": "Forbidden",
+  "internalError": "Internal Error",
+  "rateLimited": "Rate Limited",
+  "serviceUnavailable": "Service Unavailable",
+  "networkError": "Network Error",
+  "parseError": "Parse Error"
+}

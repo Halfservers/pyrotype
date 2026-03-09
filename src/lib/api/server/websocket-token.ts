@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 
 interface WebsocketTokenResponse {
@@ -6,17 +6,11 @@ interface WebsocketTokenResponse {
   socket: string;
 }
 
-export default (server: string): Promise<WebsocketTokenResponse> => {
+export default async (server: string): Promise<WebsocketTokenResponse> => {
   const daemonType = getGlobalDaemonType();
-  return new Promise((resolve, reject) => {
-    http
-      .get(`/api/client/servers/${daemonType}/${server}/websocket`)
-      .then(({ data }) =>
-        resolve({
-          token: data.data.token,
-          socket: data.data.socket,
-        }),
-      )
-      .catch(reject);
-  });
+  const data: any = await api.get(`/api/client/servers/${daemonType}/${server}/websocket`);
+  return {
+    token: data.data.token,
+    socket: data.data.socket,
+  };
 };

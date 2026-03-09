@@ -1,155 +1,172 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { TooManyRequestsError } from '../../src/utils/errors';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Hono } from 'hono'
+import { onError } from '../../src/middleware/errorHandler'
+import type { Env, HonoVariables } from '../../src/types/env'
 
-// The setup.ts globally mocks rateLimiter. We need the real implementation.
-// Use vi.importActual to get the original module.
-let rateLimit: (maxRequests: number, windowMinutes: number) => any;
+type AppEnv = { Bindings: Env; Variables: HonoVariables }
 
-beforeAll(async () => {
-  const actual = await vi.importActual<typeof import('../../src/middleware/rateLimiter')>(
+// Import the real rateLimit (setup.ts only mocks logger, not rateLimiter)
+// Use dynamic import to get a fresh module each time if needed
+let rateLimit: typeof import('../../src/middleware/rateLimiter').rateLimit
+
+beforeEach(async () => {
+  // Get fresh module to reset requestCounts Map between describe blocks
+  const mod = await vi.importActual<typeof import('../../src/middleware/rateLimiter')>(
     '../../src/middleware/rateLimiter',
-  );
-  rateLimit = actual.rateLimit;
-});
+  )
+  rateLimit = mod.rateLimit
+})
 
-function createMockReq(ip: string, path: string) {
-  return { ip, path } as any;
-}
-
-function createMockRes() {
-  return {} as any;
+function buildApp(maxRequests: number, windowMinutes: number, path = '/test') {
+  const app = new Hono<AppEnv>()
+  app.use(`${path}`, rateLimit(maxRequests, windowMinutes))
+  app.get(path, (c) => c.json({ ok: true }))
+  app.onError(onError)
+  return app
 }
 
 describe('rate limiter middleware', () => {
-  // Each test uses a unique path to avoid collisions in the shared requestCounts Map
-  let pathCounter = 0;
+  let pathCounter = 0
   function uniquePath() {
-    return `/rate-test-${++pathCounter}-${Date.now()}`;
+    return `/rate-test-${++pathCounter}-${Date.now()}`
   }
 
-  it('should allow requests under the limit', () => {
-    const path = uniquePath();
-    const middleware = rateLimit(5, 1);
-    const res = createMockRes();
+  it('should allow requests under the limit', async () => {
+    const path = uniquePath()
+    const app = buildApp(5, 1, path)
 
     for (let i = 0; i < 5; i++) {
-      const next = vi.fn();
-      middleware(createMockReq('127.0.0.1', path), res, next);
-      expect(next).toHaveBeenCalledWith();
-      expect(next.mock.calls[0]).toHaveLength(0);
+      const res = await app.request(path, {
+        headers: { 'x-forwarded-for': '127.0.0.1' },
+      })
+      expect(res.status).toBe(200)
     }
-  });
+  })
 
-  it('should block requests over the limit (429)', () => {
-    const path = uniquePath();
-    const middleware = rateLimit(3, 1);
-    const res = createMockRes();
+  it('should block requests over the limit (429)', async () => {
+    const path = uniquePath()
+    const app = buildApp(3, 1, path)
 
     // First 3 requests should succeed
     for (let i = 0; i < 3; i++) {
-      const next = vi.fn();
-      middleware(createMockReq('127.0.0.1', path), res, next);
-      expect(next).toHaveBeenCalledWith();
-      expect(next.mock.calls[0]).toHaveLength(0);
+      const res = await app.request(path, {
+        headers: { 'x-forwarded-for': '127.0.0.1' },
+      })
+      expect(res.status).toBe(200)
     }
 
     // 4th request should be rate limited
-    const next = vi.fn();
-    middleware(createMockReq('127.0.0.1', path), res, next);
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(next.mock.calls[0][0]).toBeInstanceOf(TooManyRequestsError);
-  });
+    const res = await app.request(path, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(res.status).toBe(429)
+    const body = await res.json() as any
+    expect(body.errors[0].code).toBe('TooManyRequestsError')
+  })
 
-  it('should reset after window expires', () => {
-    vi.useFakeTimers();
+  it('should reset after window expires', async () => {
+    vi.useFakeTimers()
 
-    const path = uniquePath();
-    const middleware = rateLimit(2, 1); // 2 requests per 1 minute
-    const res = createMockRes();
+    const path = uniquePath()
+    const app = buildApp(2, 1, path) // 2 requests per 1 minute
 
     // Use up the limit
     for (let i = 0; i < 2; i++) {
-      const next = vi.fn();
-      middleware(createMockReq('127.0.0.1', path), res, next);
-      expect(next.mock.calls[0]).toHaveLength(0);
+      const res = await app.request(path, {
+        headers: { 'x-forwarded-for': '127.0.0.1' },
+      })
+      expect(res.status).toBe(200)
     }
 
     // Should be blocked
-    const blockedNext = vi.fn();
-    middleware(createMockReq('127.0.0.1', path), res, blockedNext);
-    expect(blockedNext.mock.calls[0][0]).toBeInstanceOf(TooManyRequestsError);
+    const blocked = await app.request(path, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(blocked.status).toBe(429)
 
     // Advance time past the window (1 minute = 60000ms)
-    vi.advanceTimersByTime(60001);
+    vi.advanceTimersByTime(60001)
 
     // Should be allowed again
-    const allowedNext = vi.fn();
-    middleware(createMockReq('127.0.0.1', path), res, allowedNext);
-    expect(allowedNext).toHaveBeenCalledWith();
-    expect(allowedNext.mock.calls[0]).toHaveLength(0);
+    const allowed = await app.request(path, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(allowed.status).toBe(200)
 
-    vi.useRealTimers();
-  });
+    vi.useRealTimers()
+  })
 
-  it('should track different IPs independently', () => {
-    const path = uniquePath();
-    const middleware = rateLimit(1, 1);
-    const res = createMockRes();
+  it('should track different IPs independently', async () => {
+    const path = uniquePath()
+    const app = buildApp(1, 1, path)
 
     // First IP: first request succeeds
-    const next1 = vi.fn();
-    middleware(createMockReq('10.0.0.1', path), res, next1);
-    expect(next1.mock.calls[0]).toHaveLength(0);
+    const res1 = await app.request(path, {
+      headers: { 'x-forwarded-for': '10.0.0.1' },
+    })
+    expect(res1.status).toBe(200)
 
     // Second IP: first request also succeeds
-    const next2 = vi.fn();
-    middleware(createMockReq('10.0.0.2', path), res, next2);
-    expect(next2.mock.calls[0]).toHaveLength(0);
+    const res2 = await app.request(path, {
+      headers: { 'x-forwarded-for': '10.0.0.2' },
+    })
+    expect(res2.status).toBe(200)
 
     // First IP: second request blocked
-    const next3 = vi.fn();
-    middleware(createMockReq('10.0.0.1', path), res, next3);
-    expect(next3.mock.calls[0][0]).toBeInstanceOf(TooManyRequestsError);
-  });
+    const res3 = await app.request(path, {
+      headers: { 'x-forwarded-for': '10.0.0.1' },
+    })
+    expect(res3.status).toBe(429)
+  })
 
-  it('should track different paths independently', () => {
-    const path1 = uniquePath();
-    const path2 = uniquePath();
-    const middleware = rateLimit(1, 1);
-    const res = createMockRes();
+  it('should track different paths independently', async () => {
+    const path1 = uniquePath()
+    const path2 = uniquePath()
+
+    const app = new Hono<AppEnv>()
+    app.use(`${path1}`, rateLimit(1, 1))
+    app.use(`${path2}`, rateLimit(1, 1))
+    app.get(path1, (c) => c.json({ ok: true }))
+    app.get(path2, (c) => c.json({ ok: true }))
+    app.onError(onError)
 
     // Path 1: first request succeeds
-    const next1 = vi.fn();
-    middleware(createMockReq('127.0.0.1', path1), res, next1);
-    expect(next1.mock.calls[0]).toHaveLength(0);
+    const res1 = await app.request(path1, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(res1.status).toBe(200)
 
     // Path 2: first request also succeeds
-    const next2 = vi.fn();
-    middleware(createMockReq('127.0.0.1', path2), res, next2);
-    expect(next2.mock.calls[0]).toHaveLength(0);
+    const res2 = await app.request(path2, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(res2.status).toBe(200)
 
     // Path 1: second request blocked
-    const next3 = vi.fn();
-    middleware(createMockReq('127.0.0.1', path1), res, next3);
-    expect(next3.mock.calls[0][0]).toBeInstanceOf(TooManyRequestsError);
+    const res3 = await app.request(path1, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(res3.status).toBe(429)
 
     // Path 2: second request also blocked
-    const next4 = vi.fn();
-    middleware(createMockReq('127.0.0.1', path2), res, next4);
-    expect(next4.mock.calls[0][0]).toBeInstanceOf(TooManyRequestsError);
-  });
+    const res4 = await app.request(path2, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(res4.status).toBe(429)
+  })
 
-  it('should allow exactly maxRequests', () => {
-    const path = uniquePath();
-    const middleware = rateLimit(1, 1);
-    const res = createMockRes();
+  it('should allow exactly maxRequests', async () => {
+    const path = uniquePath()
+    const app = buildApp(1, 1, path)
 
-    const next1 = vi.fn();
-    middleware(createMockReq('127.0.0.1', path), res, next1);
-    expect(next1.mock.calls[0]).toHaveLength(0);
+    const res1 = await app.request(path, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(res1.status).toBe(200)
 
-    const next2 = vi.fn();
-    middleware(createMockReq('127.0.0.1', path), res, next2);
-    expect(next2.mock.calls[0][0]).toBeInstanceOf(TooManyRequestsError);
-  });
-});
+    const res2 = await app.request(path, {
+      headers: { 'x-forwarded-for': '127.0.0.1' },
+    })
+    expect(res2.status).toBe(429)
+  })
+})

@@ -1,71 +1,169 @@
-import express from 'express';
-import cookieParser from 'cookie-parser';
-import session from 'express-session';
-import supertest from 'supertest';
-import { loadUser } from '../../src/middleware/loadUser';
-import { errorHandler } from '../../src/middleware/errorHandler';
-import { routes } from '../../src/routes';
+import { Hono } from 'hono'
+import { vi } from 'vitest'
+import type { Env, HonoVariables } from '../../src/types/env'
+
+type AppType = { Bindings: Env; Variables: HonoVariables }
 
 /**
- * Creates a fully-configured Express app for testing.
- * Uses in-memory session store (no Redis needed).
+ * Create mock Prisma client with common model stubs.
+ * Override specific methods per test.
  */
-export function createTestApp() {
-  const app = express();
+export function createMockPrisma() {
+  const mockModel = () => ({
+    findUnique: vi.fn().mockResolvedValue(null),
+    findFirst: vi.fn().mockResolvedValue(null),
+    findMany: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockImplementation((args: any) => Promise.resolve({ id: 1, ...args.data })),
+    update: vi.fn().mockImplementation((args: any) => Promise.resolve({ id: 1, ...args.data })),
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    delete: vi.fn().mockResolvedValue({}),
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    count: vi.fn().mockResolvedValue(0),
+    upsert: vi.fn().mockImplementation((args: any) => Promise.resolve({ id: 1, ...args.create })),
+  })
 
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
-  app.use(cookieParser());
-
-  app.use(
-    session({
-      secret: 'test-secret-key-for-vitest',
-      resave: false,
-      saveUninitialized: false,
-      name: 'pyrotype_session',
-      cookie: { httpOnly: true, secure: false, sameSite: 'lax' },
-    }),
-  );
-
-  app.use(loadUser);
-  app.use(routes);
-  app.use(errorHandler);
-
-  return app;
+  return {
+    user: mockModel(),
+    server: mockModel(),
+    node: mockModel(),
+    egg: mockModel(),
+    nest: mockModel(),
+    location: mockModel(),
+    allocation: mockModel(),
+    backup: mockModel(),
+    database: mockModel(),
+    databaseHost: mockModel(),
+    schedule: mockModel(),
+    task: mockModel(),
+    subuser: mockModel(),
+    apiKey: mockModel(),
+    userSSHKey: mockModel(),
+    notification: mockModel(),
+    activityLog: mockModel(),
+    activityLogSubject: mockModel(),
+    setting: mockModel(),
+    session: mockModel(),
+    serverSubdomain: mockModel(),
+    domain: mockModel(),
+    mount: mockModel(),
+    mountEgg: mockModel(),
+    mountNode: mockModel(),
+    eggVariable: mockModel(),
+    serverVariable: mockModel(),
+    serverTransfer: mockModel(),
+    recoveryToken: mockModel(),
+    auditLog: mockModel(),
+    elytraJob: mockModel(),
+    serverOperation: mockModel(),
+    passwordReset: mockModel(),
+  } as any
 }
 
 /**
- * Creates a supertest agent that persists cookies (session) across requests.
+ * Create mock KV namespace.
  */
-export function createAgent(app?: express.Express) {
-  const testApp = app || createTestApp();
-  return supertest.agent(testApp);
+export function createMockKV() {
+  const store = new Map<string, string>()
+  return {
+    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    put: vi.fn(async (key: string, value: string) => { store.set(key, value) }),
+    delete: vi.fn(async (key: string) => { store.delete(key) }),
+    list: vi.fn(async () => ({ keys: [], list_complete: true, cursor: '' })),
+    _store: store,
+  } as any
 }
 
 /**
- * Logs in as a user and returns the authenticated agent.
+ * Create mock Queue.
  */
-export async function createAuthenticatedAgent(
-  credentials: { user: string; password: string } = { user: 'admin', password: 'password' },
+export function createMockQueue() {
+  return {
+    send: vi.fn().mockResolvedValue(undefined),
+    sendBatch: vi.fn().mockResolvedValue(undefined),
+  } as any
+}
+
+/**
+ * Mock admin user object.
+ */
+export const MOCK_ADMIN = {
+  id: 1,
+  uuid: 'test-admin-uuid',
+  username: 'admin',
+  email: 'admin@pyrotype.local',
+  nameFirst: 'Admin',
+  nameLast: 'User',
+  password: '$2a$10$fakehash',
+  rootAdmin: true,
+  useTotp: false,
+  language: 'en',
+  gravatar: false,
+  createdAt: new Date('2025-01-01'),
+  updatedAt: new Date('2025-01-01'),
+}
+
+/**
+ * Mock regular user object.
+ */
+export const MOCK_USER = {
+  ...MOCK_ADMIN,
+  id: 2,
+  uuid: 'test-user-uuid',
+  username: 'testuser',
+  email: 'user@pyrotype.local',
+  rootAdmin: false,
+}
+
+/**
+ * Create a Hono app with mock bindings + middleware that sets vars.
+ * The returned app has prisma, kv, queue pre-set on every request.
+ * Pass `user` to simulate an authenticated request.
+ */
+export function createTestHono(opts?: {
+  user?: typeof MOCK_ADMIN | null
+  prisma?: ReturnType<typeof createMockPrisma>
+  kv?: ReturnType<typeof createMockKV>
+  queue?: ReturnType<typeof createMockQueue>
+}) {
+  const prisma = opts?.prisma ?? createMockPrisma()
+  const kv = opts?.kv ?? createMockKV()
+  const queue = opts?.queue ?? createMockQueue()
+
+  const app = new Hono<AppType>()
+
+  // Inject mocks into context
+  app.use('*', async (c, next) => {
+    c.set('prisma', prisma as any)
+    c.set('kv', kv as any)
+    c.set('queue', queue as any)
+    if (opts?.user !== null && opts?.user !== undefined) {
+      c.set('user', opts.user as any)
+    }
+    await next()
+  })
+
+  return { app, prisma, kv, queue }
+}
+
+/**
+ * Helper to make a JSON request to a Hono app.
+ */
+export async function jsonRequest(
+  app: Hono<any>,
+  method: string,
+  path: string,
+  body?: unknown,
+  headers?: Record<string, string>,
 ) {
-  const agent = createAgent();
-
-  // Get CSRF cookie
-  await agent.get('/api/sanctum/csrf-cookie').expect(204);
-
-  // Login
-  const loginRes = await agent
-    .post('/api/auth/login')
-    .send(credentials)
-    .expect(200);
-
-  return { agent, loginResponse: loginRes.body };
-}
-
-/**
- * Creates a one-shot supertest request (no session persistence).
- */
-export function request(app?: express.Express) {
-  const testApp = app || createTestApp();
-  return supertest(testApp);
+  const init: RequestInit = {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+  }
+  if (body !== undefined) {
+    init.body = JSON.stringify(body)
+  }
+  return app.request(path, init)
 }

@@ -1,4 +1,5 @@
-import http, { type FractalResponseList } from '@/lib/api/http';
+import { api } from '@/lib/http';
+import type { FractalResponseList } from '@/types/api';
 
 export interface SSHKey {
   name: string;
@@ -17,12 +18,12 @@ function toSSHKey(data: any): SSHKey {
 }
 
 export const getSSHKeys = async (): Promise<SSHKey[]> => {
-  const { data } = await http.get('/api/client/account/ssh-keys');
-  return (data as FractalResponseList).data.map((datum: any) => toSSHKey(datum.attributes));
+  const data = await api.get<FractalResponseList>('/api/client/account/ssh-keys');
+  return data.data.map((datum: any) => toSSHKey(datum.attributes));
 };
 
 export const createSSHKey = async (name: string, publicKey: string): Promise<SSHKey> => {
-  const { data } = await http.post('/api/client/account/ssh-keys', {
+  const data: any = await api.post('/api/client/account/ssh-keys', {
     name,
     public_key: publicKey,
   });
@@ -30,5 +31,5 @@ export const createSSHKey = async (name: string, publicKey: string): Promise<SSH
 };
 
 export const deleteSSHKey = async (fingerprint: string): Promise<void> => {
-  await http.post('/api/client/account/ssh-keys/remove', { fingerprint });
+  await api.post('/api/client/account/ssh-keys/remove', { fingerprint });
 };

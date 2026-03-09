@@ -13,7 +13,8 @@ import { getServerStartup } from '@/lib/api/server/startup';
 import { getServerSubusers } from '@/lib/api/server/users';
 import { queryKeys } from '@/lib/queries/keys';
 
-import http, { getPaginationSet } from '@/lib/api/http';
+import { api } from '@/lib/http';
+import { getPaginationSet } from '@/lib/fractal';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 import { rawDataToServerAllocation, rawDataToServerBackup } from '@/lib/api/transformers';
 
@@ -32,9 +33,9 @@ export const useServerBackupsQuery = (serverId: string, page = 1) =>
     queryKey: [...queryKeys.servers.backups(serverId), page],
     queryFn: async () => {
       const daemonType = getGlobalDaemonType();
-      const { data } = await http.get(
+      const data = await api.get<any>(
         `/api/client/servers/${daemonType}/${serverId}/backups`,
-        { params: { page } },
+        { page },
       );
       return {
         items: (data.data || []).map(rawDataToServerBackup),
@@ -59,7 +60,7 @@ export const useServerAllocationsQuery = (serverId: string) =>
     queryKey: queryKeys.servers.allocations(serverId),
     queryFn: async () => {
       const daemonType = getGlobalDaemonType();
-      const { data } = await http.get(
+      const data = await api.get<any>(
         `/api/client/servers/${daemonType}/${serverId}/network/allocations`,
       );
       return (data.data || []).map(rawDataToServerAllocation);
@@ -82,13 +83,11 @@ export const useServerActivityQuery = (
     queryKey: [...queryKeys.servers.activity(serverId), filters],
     queryFn: async () => {
       const daemonType = getGlobalDaemonType();
-      const { data } = await http.get(
+      const data = await api.get<any>(
         `/api/client/servers/${daemonType}/${serverId}/activity`,
         {
-          params: {
-            include: ['actor'],
-            ...(filters?.page ? { page: filters.page } : {}),
-          },
+          include: 'actor',
+          ...(filters?.page ? { page: filters.page } : {}),
         },
       );
       return {

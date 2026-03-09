@@ -1,0 +1,12 @@
+{
+  "adminPanel": "Admin Panel",
+  "users": "Users",
+  "servers": "Servers",
+  "nodes": "Nodes",
+  "locations": "Locations",
+  "overview": "Overview",
+  "management": "Management",
+  "createUser": "Create User",
+  "editUser": "Edit User",
+  "deleteUser": "Delete User"
+}

@@ -1,82 +1,120 @@
-import type { Request, Response, NextFunction } from 'express';
-import { NotFoundError } from '../../../../utils/errors';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../../../types/env'
+import { NotFoundError } from '../../../../utils/errors'
+import { fractalItem, fractalPaginated } from '../../../../utils/response'
+import { logActivity } from '../../../../services/activity'
 
-export async function listJobs(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const jobType = req.query.type as string | undefined;
-    const jobStatus = req.query.status as string | undefined;
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
-    // In production, this queries the ElytraJobService which tracks
-    // async jobs submitted to the Elytra daemon.
-    // Jobs are stored in the database and their status is updated
-    // by the daemon through the remote API callback endpoints.
+export async function listJobs(c: AppContext) {
+  const server = c.var.server!
+  const prisma = c.var.prisma
+  const jobType = c.req.query('type')
+  const jobStatus = c.req.query('status')
+  const perPage = Math.min(50, Math.max(1, parseInt(c.req.query('per_page') ?? '') || 20))
+  const page = Math.max(1, parseInt(c.req.query('page') ?? '') || 1)
+  const skip = (page - 1) * perPage
 
-    res.json({
-      object: 'list',
-      data: [],
-    });
-  } catch (err) {
-    next(err);
-  }
+  const where: Record<string, unknown> = { serverId: server.id }
+  if (jobType) where.jobType = jobType
+  if (jobStatus) where.status = jobStatus
+
+  const [jobs, total] = await Promise.all([
+    prisma.elytraJob.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: perPage,
+    }),
+    prisma.elytraJob.count({ where }),
+  ])
+
+  return c.json(fractalPaginated('elytra_job', jobs, total, page, perPage))
 }
 
-export async function createJob(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const { job_type, job_data } = req.body;
+export async function createJob(c: AppContext) {
+  const server = c.var.server!
+  const user = c.var.user!
+  const prisma = c.var.prisma
+  const { job_type, job_data } = await c.req.json()
 
-    if (!job_type || typeof job_type !== 'string') {
-      res.status(422).json({ error: 'A job type must be provided.' });
-      return;
-    }
-
-    // In production, this submits the job through ElytraJobService
-    // which validates permissions, creates a job record, and sends
-    // the request to the Elytra daemon.
-
-    const jobId = `job_${Date.now()}`;
-
-    // TODO: Activity log: job:create
-
-    res.json({
-      job_id: jobId,
-      status: 'queued',
-      type: job_type,
-    });
-  } catch (err) {
-    next(err);
+  if (!job_type || typeof job_type !== 'string') {
+    return c.json({ error: 'A job type must be provided.' }, 422)
   }
+
+  const job = await prisma.elytraJob.create({
+    data: {
+      uuid: crypto.randomUUID(),
+      serverId: server.id,
+      userId: user.id,
+      jobType: job_type,
+      jobData: job_data ?? {},
+      status: 'pending',
+    },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:job.create',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { job_type, job_uuid: job.uuid },
+  })
+
+  return c.json({
+    job_id: job.uuid,
+    status: 'queued',
+    type: job_type,
+  })
 }
 
-export async function showJob(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const { jobId } = req.params;
+export async function showJob(c: AppContext) {
+  const server = c.var.server!
+  const prisma = c.var.prisma
+  const jobId = c.req.param('jobId')
 
-    // In production, query ElytraJobService for job status.
-    // For now, return not found as we don't have persistent job storage yet.
-    throw new NotFoundError('Job not found');
-  } catch (err) {
-    next(err);
+  const job = await prisma.elytraJob.findFirst({
+    where: { uuid: String(jobId), serverId: server.id },
+  })
+
+  if (!job) {
+    throw new NotFoundError('Job not found.')
   }
+
+  return c.json(fractalItem('elytra_job', job))
 }
 
-export async function cancelJob(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const { jobId } = req.params;
+export async function cancelJob(c: AppContext) {
+  const server = c.var.server!
+  const user = c.var.user!
+  const prisma = c.var.prisma
+  const jobId = c.req.param('jobId')
 
-    // In production, cancel through ElytraJobService which sends
-    // a cancellation request to the Elytra daemon.
+  const job = await prisma.elytraJob.findFirst({
+    where: { uuid: String(jobId), serverId: server.id },
+  })
 
-    // TODO: Activity log: job:cancel
-
-    res.json({
-      job_id: jobId,
-      status: 'cancelled',
-    });
-  } catch (err) {
-    next(err);
+  if (!job) {
+    throw new NotFoundError('Job not found.')
   }
+
+  await prisma.elytraJob.update({
+    where: { id: job.id },
+    data: { status: 'cancelled' },
+  })
+
+  const ip = c.req.header('x-forwarded-for') ?? c.req.header('cf-connecting-ip') ?? '127.0.0.1'
+  await logActivity(prisma, {
+    event: 'server:job.cancel',
+    ip,
+    userId: user.id,
+    serverId: server.id,
+    properties: { job_uuid: job.uuid },
+  })
+
+  return c.json({
+    job_id: job.uuid,
+    status: 'cancelled',
+  })
 }

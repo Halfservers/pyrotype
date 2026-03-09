@@ -1,261 +1,228 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import express, { type Request, type Response, type NextFunction } from 'express';
-import session from 'express-session';
-import supertest from 'supertest';
-import { isAuthenticated, isAdmin, requireTwoFactor } from '../../src/middleware/auth';
-import { errorHandler } from '../../src/middleware/errorHandler';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Hono } from 'hono'
+import { requireAuth, isAdmin, requireTwoFactor } from '../../src/middleware/auth'
+import { onError } from '../../src/middleware/errorHandler'
+import { createMockPrisma, MOCK_ADMIN, MOCK_USER } from '../helpers/test-app'
+import type { Env, HonoVariables } from '../../src/types/env'
 
-// Mock prisma
-const mockFindUnique = vi.fn();
-const mockFindFirst = vi.fn();
-const mockUpdate = vi.fn();
+type AppEnv = { Bindings: Env; Variables: HonoVariables }
 
-vi.mock('../../src/config/database', () => ({
-  prisma: {
-    user: { findUnique: (...args: any[]) => mockFindUnique(...args) },
-    apiKey: {
-      findFirst: (...args: any[]) => mockFindFirst(...args),
-      update: (...args: any[]) => mockUpdate(...args),
-    },
-  },
-}));
+function buildApp(opts?: {
+  user?: typeof MOCK_ADMIN | null
+  prisma?: ReturnType<typeof createMockPrisma>
+  session?: { twoFactorVerified?: boolean } | null
+  middlewares?: any[]
+}) {
+  const prisma = opts?.prisma ?? createMockPrisma()
+  const app = new Hono<AppEnv>()
 
-function createApp(middleware: any[]) {
-  const app = express();
-  app.use(express.json());
-  app.use(
-    session({
-      secret: 'test-secret',
-      resave: false,
-      saveUninitialized: false,
-    }),
-  );
-
-  // Helper to set session data from query params (for testing)
-  app.use((req: Request, _res: Response, next: NextFunction) => {
-    if (req.headers['x-test-user-id']) {
-      (req.session as any).userId = Number(req.headers['x-test-user-id']);
+  app.use('*', async (c, next) => {
+    c.set('prisma', prisma as any)
+    if (opts?.user !== undefined && opts.user !== null) {
+      c.set('user', opts.user as any)
     }
-    if (req.headers['x-test-two-factor-verified']) {
-      (req.session as any).twoFactorVerified = req.headers['x-test-two-factor-verified'] === 'true';
+    if (opts?.session !== undefined) {
+      c.set('session', opts.session as any)
     }
-    next();
-  });
+    await next()
+  })
 
-  for (const mw of middleware) {
-    app.use(mw);
+  if (opts?.middlewares) {
+    for (const mw of opts.middlewares) {
+      app.use('*', mw)
+    }
   }
 
-  app.get('/test', (_req: Request, res: Response) => {
-    res.json({ ok: true, user: (_req as any).user });
-  });
+  app.get('/test', (c) => c.json({ ok: true, user: c.var.user ?? null }))
+  app.onError(onError)
 
-  app.use(errorHandler);
-  return app;
+  return { app, prisma }
 }
 
 describe('auth middleware', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-  });
+    vi.clearAllMocks()
+  })
 
-  describe('isAuthenticated', () => {
-    it('should pass with valid session userId', async () => {
-      const fakeUser = { id: 1, username: 'admin', rootAdmin: true };
-      mockFindUnique.mockResolvedValue(fakeUser);
+  describe('requireAuth', () => {
+    it('should pass when user is already set on context', async () => {
+      const { app } = buildApp({ user: MOCK_ADMIN, middlewares: [requireAuth] })
 
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app).get('/test').set('x-test-user-id', '1');
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
 
-      expect(res.status).toBe(200);
-      expect(res.body.ok).toBe(true);
-      expect(res.body.user).toMatchObject({ id: 1, username: 'admin', rootAdmin: true });
-      expect(mockFindUnique).toHaveBeenCalledWith({ where: { id: 1 } });
-    });
+      const body = await res.json() as any
+      expect(body.ok).toBe(true)
+      expect(body.user).toMatchObject({ id: 1, username: 'admin', rootAdmin: true })
+    })
 
     it('should pass with valid Bearer API key', async () => {
-      const fakeUser = { id: 2, username: 'apiuser', rootAdmin: false };
-      const fakeApiKey = { id: 10, identifier: 'myident', token: 'secrettoken', user: fakeUser };
-      mockFindFirst.mockResolvedValue(fakeApiKey);
-      mockUpdate.mockResolvedValue({});
+      const prisma = createMockPrisma()
+      const fakeUser = { id: 2, username: 'apiuser', rootAdmin: false }
+      const fakeApiKey = { id: 10, identifier: 'myident', token: 'secrettoken', user: fakeUser }
+      prisma.apiKey.findFirst.mockResolvedValue(fakeApiKey)
+      prisma.apiKey.update.mockResolvedValue({})
 
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app)
-        .get('/test')
-        .set('Authorization', 'Bearer myident.secrettoken');
+      const { app } = buildApp({ prisma, middlewares: [requireAuth] })
 
-      expect(res.status).toBe(200);
-      expect(res.body.user).toMatchObject({ id: 2, username: 'apiuser' });
-      expect(mockFindFirst).toHaveBeenCalledWith({
+      const res = await app.request('/test', {
+        headers: { Authorization: 'Bearer myident.secrettoken' },
+      })
+
+      expect(res.status).toBe(200)
+      const body = await res.json() as any
+      expect(body.user).toMatchObject({ id: 2, username: 'apiuser' })
+      expect(prisma.apiKey.findFirst).toHaveBeenCalledWith({
         where: { identifier: 'myident', keyType: 2 },
         include: { user: true },
-      });
-      expect(mockUpdate).toHaveBeenCalledWith({
+      })
+      expect(prisma.apiKey.update).toHaveBeenCalledWith({
         where: { id: 10 },
         data: { lastUsedAt: expect.any(Date) },
-      });
-    });
+      })
+    })
 
-    it('should reject with no session and no token (401)', async () => {
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app).get('/test');
+    it('should reject with no user and no token (401)', async () => {
+      const { app } = buildApp({ middlewares: [requireAuth] })
 
-      expect(res.status).toBe(401);
-      expect(res.body.errors[0].code).toBe('AuthenticationError');
-    });
+      const res = await app.request('/test')
+      expect(res.status).toBe(401)
 
-    it('should reject with invalid session userId (user not found)', async () => {
-      mockFindUnique.mockResolvedValue(null);
-
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app).get('/test').set('x-test-user-id', '9999');
-
-      expect(res.status).toBe(401);
-      expect(res.body.errors[0].code).toBe('AuthenticationError');
-    });
+      const body = await res.json() as any
+      expect(body.errors[0].code).toBe('AuthenticationError')
+    })
 
     it('should reject with malformed Bearer token (no dot separator)', async () => {
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app)
-        .get('/test')
-        .set('Authorization', 'Bearer nodottoken');
+      const { app } = buildApp({ middlewares: [requireAuth] })
 
-      expect(res.status).toBe(401);
-      expect(res.body.errors[0].code).toBe('AuthenticationError');
-    });
+      const res = await app.request('/test', {
+        headers: { Authorization: 'Bearer nodottoken' },
+      })
+
+      expect(res.status).toBe(401)
+      const body = await res.json() as any
+      expect(body.errors[0].code).toBe('AuthenticationError')
+    })
 
     it('should reject when API key identifier not found', async () => {
-      mockFindFirst.mockResolvedValue(null);
+      const prisma = createMockPrisma()
+      prisma.apiKey.findFirst.mockResolvedValue(null)
 
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app)
-        .get('/test')
-        .set('Authorization', 'Bearer unknown.token');
+      const { app } = buildApp({ prisma, middlewares: [requireAuth] })
 
-      expect(res.status).toBe(401);
-    });
+      const res = await app.request('/test', {
+        headers: { Authorization: 'Bearer unknown.token' },
+      })
+
+      expect(res.status).toBe(401)
+    })
 
     it('should reject when API key token does not match', async () => {
-      const fakeApiKey = {
+      const prisma = createMockPrisma()
+      prisma.apiKey.findFirst.mockResolvedValue({
         id: 10,
         identifier: 'myident',
         token: 'correcttoken',
         user: { id: 2, username: 'apiuser', rootAdmin: false },
-      };
-      mockFindFirst.mockResolvedValue(fakeApiKey);
+      })
 
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app)
-        .get('/test')
-        .set('Authorization', 'Bearer myident.wrongtoken');
+      const { app } = buildApp({ prisma, middlewares: [requireAuth] })
 
-      expect(res.status).toBe(401);
-    });
+      const res = await app.request('/test', {
+        headers: { Authorization: 'Bearer myident.wrongtoken' },
+      })
+
+      expect(res.status).toBe(401)
+    })
 
     it('should reject with empty Bearer value', async () => {
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app)
-        .get('/test')
-        .set('Authorization', 'Bearer ');
+      const { app } = buildApp({ middlewares: [requireAuth] })
 
-      expect(res.status).toBe(401);
-    });
+      const res = await app.request('/test', {
+        headers: { Authorization: 'Bearer ' },
+      })
+
+      expect(res.status).toBe(401)
+    })
 
     it('should reject with non-Bearer authorization header', async () => {
-      const app = createApp([isAuthenticated]);
-      const res = await supertest(app)
-        .get('/test')
-        .set('Authorization', 'Basic dXNlcjpwYXNz');
+      const { app } = buildApp({ middlewares: [requireAuth] })
 
-      expect(res.status).toBe(401);
-    });
-  });
+      const res = await app.request('/test', {
+        headers: { Authorization: 'Basic dXNlcjpwYXNz' },
+      })
+
+      expect(res.status).toBe(401)
+    })
+  })
 
   describe('isAdmin', () => {
     it('should pass for rootAdmin=true', async () => {
-      const app = createApp([
-        (req: Request, _res: Response, next: NextFunction) => {
-          (req as any).user = { id: 1, rootAdmin: true };
-          next();
-        },
-        isAdmin,
-      ]);
+      const { app } = buildApp({ user: MOCK_ADMIN, middlewares: [isAdmin] })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
 
     it('should reject for rootAdmin=false (403)', async () => {
-      const app = createApp([
-        (req: Request, _res: Response, next: NextFunction) => {
-          (req as any).user = { id: 2, rootAdmin: false };
-          next();
-        },
-        isAdmin,
-      ]);
+      const { app } = buildApp({ user: MOCK_USER, middlewares: [isAdmin] })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(403);
-      expect(res.body.errors[0].detail).toBe('Must be an administrator.');
-    });
+      const res = await app.request('/test')
+      expect(res.status).toBe(403)
+
+      const body = await res.json() as any
+      expect(body.errors[0].detail).toBe('Must be an administrator.')
+    })
 
     it('should reject when no user is set', async () => {
-      const app = createApp([isAdmin]);
+      const { app } = buildApp({ middlewares: [isAdmin] })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(403);
-    });
-  });
+      const res = await app.request('/test')
+      expect(res.status).toBe(403)
+    })
+  })
 
   describe('requireTwoFactor', () => {
     it('should pass when useTotp is false', async () => {
-      const app = createApp([
-        (req: Request, _res: Response, next: NextFunction) => {
-          (req as any).user = { id: 1, useTotp: false };
-          next();
-        },
-        requireTwoFactor,
-      ]);
+      const { app } = buildApp({
+        user: { ...MOCK_ADMIN, useTotp: false },
+        middlewares: [requireTwoFactor],
+      })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
 
     it('should pass when useTotp is true and twoFactorVerified is true', async () => {
-      const app = createApp([
-        (req: Request, _res: Response, next: NextFunction) => {
-          (req as any).user = { id: 1, useTotp: true };
-          next();
-        },
-        requireTwoFactor,
-      ]);
+      const { app } = buildApp({
+        user: { ...MOCK_ADMIN, useTotp: true },
+        session: { twoFactorVerified: true },
+        middlewares: [requireTwoFactor],
+      })
 
-      const res = await supertest(app)
-        .get('/test')
-        .set('x-test-two-factor-verified', 'true');
-
-      expect(res.status).toBe(200);
-    });
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
 
     it('should reject when useTotp is true but twoFactorVerified is not set (403)', async () => {
-      const app = createApp([
-        (req: Request, _res: Response, next: NextFunction) => {
-          (req as any).user = { id: 1, useTotp: true };
-          next();
-        },
-        requireTwoFactor,
-      ]);
+      const { app } = buildApp({
+        user: { ...MOCK_ADMIN, useTotp: true },
+        session: null,
+        middlewares: [requireTwoFactor],
+      })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(403);
-      expect(res.body.errors[0].detail).toBe('Two-factor authentication required.');
-    });
+      const res = await app.request('/test')
+      expect(res.status).toBe(403)
+
+      const body = await res.json() as any
+      expect(body.errors[0].detail).toBe('Two-factor authentication required.')
+    })
 
     it('should pass when user is not set (no useTotp to check)', async () => {
-      const app = createApp([requireTwoFactor]);
+      const { app } = buildApp({ middlewares: [requireTwoFactor] })
 
-      const res = await supertest(app).get('/test');
-      expect(res.status).toBe(200);
-    });
-  });
-});
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+    })
+  })
+})

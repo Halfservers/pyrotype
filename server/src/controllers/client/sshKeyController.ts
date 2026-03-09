@@ -1,7 +1,8 @@
-import type { Request, Response, NextFunction } from 'express';
-import crypto from 'crypto';
-import { prisma } from '../../config/database';
+import type { Context } from 'hono';
+import type { Env, HonoVariables } from '../../types/env';
 import { AppError } from '../../utils/errors';
+
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>;
 
 function transformSSHKey(key: {
   name: string;
@@ -20,89 +21,82 @@ function transformSSHKey(key: {
   };
 }
 
-function computeFingerprint(publicKey: string): string {
-  // Extract the key data (second part of the SSH public key format)
+async function computeFingerprint(publicKey: string): Promise<string> {
   const parts = publicKey.trim().split(/\s+/);
   const keyData = parts.length >= 2 ? parts[1] : parts[0];
-  const hash = crypto.createHash('sha256').update(Buffer.from(keyData, 'base64')).digest('base64');
-  return `SHA256:${hash.replace(/=+$/, '')}`;
+  const rawBytes = Uint8Array.from(atob(keyData), (ch) => ch.charCodeAt(0));
+  const hashBuffer = await crypto.subtle.digest('SHA-256', rawBytes);
+  const hashArray = new Uint8Array(hashBuffer);
+  const hashBase64 = btoa(String.fromCharCode(...hashArray));
+  return `SHA256:${hashBase64.replace(/=+$/, '')}`;
 }
 
-export async function index(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const user = req.user!;
+export async function index(c: AppContext) {
+  const user = c.var.user!;
+  const prisma = c.var.prisma;
 
-    const keys = await prisma.userSSHKey.findMany({
-      where: { userId: user.id, deletedAt: null },
-      orderBy: { createdAt: 'desc' },
-    });
+  const keys = await prisma.userSSHKey.findMany({
+    where: { userId: user.id, deletedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
 
-    res.json({
-      object: 'list',
-      data: keys.map(transformSSHKey),
-    });
-  } catch (err) {
-    next(err);
-  }
+  return c.json({
+    object: 'list',
+    data: keys.map(transformSSHKey),
+  });
 }
 
-export async function store(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const user = req.user!;
-    const { name, public_key } = req.body;
+export async function store(c: AppContext) {
+  const user = c.var.user!;
+  const prisma = c.var.prisma;
+  const { name, public_key } = await c.req.json();
 
-    if (!name || !public_key) {
-      throw new AppError('The name and public_key fields are required.', 422, 'ValidationError');
-    }
-
-    const fingerprint = computeFingerprint(public_key);
-
-    // Check for duplicate fingerprint
-    const existing = await prisma.userSSHKey.findFirst({
-      where: { userId: user.id, fingerprint, deletedAt: null },
-    });
-
-    if (existing) {
-      throw new AppError('This SSH key is already added to your account.', 422, 'ValidationError');
-    }
-
-    const key = await prisma.userSSHKey.create({
-      data: {
-        userId: user.id,
-        name,
-        publicKey: public_key,
-        fingerprint,
-      },
-    });
-
-    res.json(transformSSHKey(key));
-  } catch (err) {
-    next(err);
+  if (!name || !public_key) {
+    throw new AppError('The name and public_key fields are required.', 422, 'ValidationError');
   }
+
+  const fingerprint = await computeFingerprint(public_key);
+
+  // Check for duplicate fingerprint
+  const existing = await prisma.userSSHKey.findFirst({
+    where: { userId: user.id, fingerprint, deletedAt: null },
+  });
+
+  if (existing) {
+    throw new AppError('This SSH key is already added to your account.', 422, 'ValidationError');
+  }
+
+  const key = await prisma.userSSHKey.create({
+    data: {
+      userId: user.id,
+      name,
+      publicKey: public_key,
+      fingerprint,
+    },
+  });
+
+  return c.json(transformSSHKey(key));
 }
 
-export async function deleteSSHKey(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const user = req.user!;
-    const { fingerprint } = req.body;
+export async function deleteSSHKey(c: AppContext) {
+  const user = c.var.user!;
+  const prisma = c.var.prisma;
+  const { fingerprint } = await c.req.json();
 
-    if (!fingerprint) {
-      throw new AppError('The fingerprint field is required.', 422, 'ValidationError');
-    }
-
-    const key = await prisma.userSSHKey.findFirst({
-      where: { userId: user.id, fingerprint, deletedAt: null },
-    });
-
-    if (key) {
-      await prisma.userSSHKey.update({
-        where: { id: key.id },
-        data: { deletedAt: new Date() },
-      });
-    }
-
-    res.status(204).send();
-  } catch (err) {
-    next(err);
+  if (!fingerprint) {
+    throw new AppError('The fingerprint field is required.', 422, 'ValidationError');
   }
+
+  const key = await prisma.userSSHKey.findFirst({
+    where: { userId: user.id, fingerprint, deletedAt: null },
+  });
+
+  if (key) {
+    await prisma.userSSHKey.update({
+      where: { id: key.id },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  return c.body(null, 204);
 }

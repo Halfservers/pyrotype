@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 import { type ServerBackup, rawDataToServerBackup } from '@/lib/api/transformers';
 
@@ -21,28 +21,28 @@ export const createServerBackup = async (
   params: CreateBackupParams,
 ): Promise<CreateBackupResult> => {
   const daemonType = getGlobalDaemonType();
-  const response = await http.post(`/api/client/servers/${daemonType}/${uuid}/backups`, {
+  const response: any = await api.post(`/api/client/servers/${daemonType}/${uuid}/backups`, {
     name: params.name,
     ignored: params.ignored,
     is_locked: params.isLocked,
   });
 
-  if (!response.data) {
+  if (!response) {
     throw new Error('Invalid response: missing data');
   }
 
-  if (response.data.data && response.data.meta) {
-    const backupData = rawDataToServerBackup(response.data.data);
+  if (response.data && response.meta) {
+    const backupData = rawDataToServerBackup(response.data);
     return {
       backup: backupData,
-      jobId: response.data.meta.job_id,
-      status: response.data.meta.status,
-      progress: response.data.meta.progress,
-      message: response.data.meta.message,
+      jobId: response.meta.job_id,
+      status: response.meta.status,
+      progress: response.meta.progress,
+      message: response.meta.message,
     };
   }
 
-  if (response.data.job_id && response.data.status) {
+  if (response.job_id && response.status) {
     const tempBackup: ServerBackup = {
       uuid: '',
       name: params.name || 'Pending...',
@@ -59,10 +59,10 @@ export const createServerBackup = async (
       createdAt: new Date(),
       completedAt: null,
       canRetry: false,
-      jobStatus: response.data.status,
+      jobStatus: response.status,
       jobProgress: 0,
-      jobMessage: response.data.message || '',
-      jobId: response.data.job_id,
+      jobMessage: response.message || '',
+      jobId: response.job_id,
       jobError: null,
       jobStartedAt: null,
       jobLastUpdatedAt: null,
@@ -71,15 +71,15 @@ export const createServerBackup = async (
 
     return {
       backup: tempBackup,
-      jobId: response.data.job_id,
-      status: response.data.status,
+      jobId: response.job_id,
+      status: response.status,
       progress: 0,
-      message: response.data.message || '',
+      message: response.message || '',
     };
   }
 
-  if (response.data.uuid || response.data.object === 'backup') {
-    const backupData = rawDataToServerBackup(response.data);
+  if (response.uuid || response.object === 'backup') {
+    const backupData = rawDataToServerBackup(response);
     return {
       backup: backupData,
       jobId: backupData.jobId || '',
@@ -96,11 +96,11 @@ export const deleteServerBackup = async (
   uuid: string,
   backup: string,
 ): Promise<{ jobId: string; status: string; message: string }> => {
-  const response = await http.delete(`/api/client/servers/${uuid}/backups/${backup}`);
+  const data: any = await api.delete(`/api/client/servers/${uuid}/backups/${backup}`);
   return {
-    jobId: response.data.job_id,
-    status: response.data.status,
-    message: response.data.message,
+    jobId: data.job_id,
+    status: data.status,
+    message: data.message,
   };
 };
 
@@ -109,25 +109,19 @@ export const deleteAllServerBackups = async (
   password: string,
   twoFactor: boolean,
   totpCode?: string,
-): Promise<number> => {
+): Promise<void> => {
   const daemonType = getGlobalDaemonType();
-  const response = await http.delete(
-    `/api/client/servers/${daemonType}/${uuid}/backups/delete-all`,
-    {
-      data: {
-        password,
-        ...(twoFactor ? { totp_code: totpCode } : {}),
-      },
-    },
-  );
-  return response.status;
+  await api.post(`/api/client/servers/${daemonType}/${uuid}/backups/delete-all`, {
+    password,
+    ...(twoFactor ? { totp_code: totpCode } : {}),
+  });
 };
 
 export const getServerBackupDownloadUrl = async (
   uuid: string,
   backup: string,
 ): Promise<string> => {
-  const { data } = await http.get(
+  const data: any = await api.get(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/backups/${backup}/download`,
   );
   return data.attributes.url;
@@ -138,7 +132,7 @@ export const renameServerBackup = async (
   backup: string,
   name: string,
 ): Promise<ServerBackup> => {
-  const { data } = await http.post(
+  const data: any = await api.post(
     `/api/client/servers/${getGlobalDaemonType()}/${uuid}/backups/${backup}/rename`,
     { name },
   );
@@ -164,10 +158,9 @@ export const getBackupStatus = async (
   backupUuid: string,
 ): Promise<BackupJobStatus> => {
   const daemonType = getGlobalDaemonType();
-  const { data } = await http.get(
+  return api.get<BackupJobStatus>(
     `/api/client/servers/${daemonType}/${uuid}/backups/${backupUuid}/status`,
   );
-  return data;
 };
 
 export const retryBackup = async (
@@ -175,10 +168,9 @@ export const retryBackup = async (
   backupUuid: string,
 ): Promise<{ message: string; job_id: string; status: string; progress: number }> => {
   const daemonType = getGlobalDaemonType();
-  const { data } = await http.post(
+  return api.post(
     `/api/client/servers/${daemonType}/${uuid}/backups/${backupUuid}/retry`,
   );
-  return data;
 };
 
 export const restoreServerBackup = async (
@@ -186,7 +178,7 @@ export const restoreServerBackup = async (
   backup: string,
 ): Promise<{ jobId: string; status: string; message: string }> => {
   const daemonType = getGlobalDaemonType();
-  const response = await http.post(
+  const data: any = await api.post(
     `/api/client/servers/${daemonType}/${uuid}/backups/${backup}/restore`,
     {
       adapter: 'rustic_s3',
@@ -195,8 +187,8 @@ export const restoreServerBackup = async (
     },
   );
   return {
-    jobId: response.data.job_id,
-    status: response.data.status,
-    message: response.data.message,
+    jobId: data.job_id,
+    status: data.status,
+    message: data.message,
   };
 };

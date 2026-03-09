@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 
 interface UpdatePasswordData {
   current: string;
@@ -6,15 +6,10 @@ interface UpdatePasswordData {
   confirmPassword: string;
 }
 
-export default ({ current, password, confirmPassword }: UpdatePasswordData): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .put('/api/client/account/password', {
-        current_password: current,
-        password: password,
-        password_confirmation: confirmPassword,
-      })
-      .then(() => resolve())
-      .catch(reject);
+export default async ({ current, password, confirmPassword }: UpdatePasswordData): Promise<void> => {
+  await api.put('/api/client/account/password', {
+    current_password: current,
+    password: password,
+    password_confirmation: confirmPassword,
   });
 };

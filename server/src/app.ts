@@ -1,30 +1,42 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
-import cookieParser from 'cookie-parser';
-import { sessionMiddleware } from './services/auth/session';
-import { loadUser } from './middleware/loadUser';
-import { errorHandler } from './middleware/errorHandler';
-import { routes } from './routes';
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+import { secureHeaders } from 'hono/secure-headers'
+import { logger as honoLogger } from 'hono/logger'
+import type { Env, HonoVariables } from './types/env'
+import { createPrisma } from './config/database'
+import { loadUser } from './middleware/loadUser'
+import { onError } from './middleware/errorHandler'
+import { registerRoutes } from './routes'
 
-export const app = express();
+type AppType = { Bindings: Env; Variables: HonoVariables }
 
-app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
-app.use(morgan('dev'));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
+export function createApp() {
+  const app = new Hono<AppType>()
 
-// Session middleware
-app.use(sessionMiddleware);
+  // Secure headers (replaces helmet)
+  app.use('*', secureHeaders())
+  // CORS (replaces cors middleware)
+  app.use('*', cors({ origin: '*', credentials: true }))
+  // Request logging
+  app.use('*', honoLogger())
 
-// Load user from session into req.user
-app.use(loadUser);
+  // Prisma + KV + Queue setup per request
+  app.use('*', async (c, next) => {
+    const prisma = createPrisma(c.env.DB)
+    c.set('prisma', prisma)
+    c.set('kv', c.env.SESSION_KV)
+    c.set('queue', c.env.JOB_QUEUE)
+    await next()
+  })
 
-// Mount all routes
-app.use(routes);
+  // Load user from session
+  app.use('*', loadUser)
 
-// Global error handler (must be last)
-app.use(errorHandler);
+  // Register all routes
+  registerRoutes(app)
+
+  // Error handler
+  app.onError(onError)
+
+  return app
+}

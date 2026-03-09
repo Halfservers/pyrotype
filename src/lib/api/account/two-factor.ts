@@ -1,29 +1,20 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 
 export interface TwoFactorTokenData {
   image_url_data: string;
   secret: string;
 }
 
-export const getTwoFactorTokenData = (): Promise<TwoFactorTokenData> => {
-  return new Promise((resolve, reject) => {
-    http
-      .get('/api/client/account/two-factor')
-      .then(({ data }) => resolve(data.data))
-      .catch(reject);
-  });
+export const getTwoFactorTokenData = async (): Promise<TwoFactorTokenData> => {
+  const data: any = await api.get('/api/client/account/two-factor');
+  return data.data;
 };
 
 export const enableTwoFactor = async (code: string, password: string): Promise<string[]> => {
-  const { data } = await http.post('/api/client/account/two-factor', { code, password });
+  const data: any = await api.post('/api/client/account/two-factor', { code, password });
   return data.attributes.tokens;
 };
 
-export const disableTwoFactor = (password: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post('/api/client/account/two-factor/disable', { password })
-      .then(() => resolve())
-      .catch(reject);
-  });
+export const disableTwoFactor = async (password: string): Promise<void> => {
+  await api.post('/api/client/account/two-factor/disable', { password });
 };

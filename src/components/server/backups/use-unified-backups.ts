@@ -73,8 +73,8 @@ export const useUnifiedBackups = () => {
 
   const renameBackup = useCallback(
     async (backupUuid: string, newName: string) => {
-      const http = (await import('@/lib/api/http')).default;
-      await http.post(`/api/client/servers/${uuid}/backups/${backupUuid}/rename`, { name: newName });
+      const { api: httpApi } = await import('@/lib/http');
+      await httpApi.post(`/api/client/servers/${uuid}/backups/${backupUuid}/rename`, { name: newName });
       refetch();
     },
     [uuid, refetch],
@@ -82,8 +82,8 @@ export const useUnifiedBackups = () => {
 
   const toggleBackupLock = useCallback(
     async (backupUuid: string) => {
-      const http = (await import('@/lib/api/http')).default;
-      await http.post(`/api/client/servers/${uuid}/backups/${backupUuid}/lock`);
+      const { api: httpApi } = await import('@/lib/http');
+      await httpApi.post(`/api/client/servers/${uuid}/backups/${backupUuid}/lock`);
       refetch();
     },
     [uuid, refetch],

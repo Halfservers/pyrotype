@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, cloudflare-workers]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-test:
+    name: Server Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: npx prisma generate
+      - run: pnpm vitest run --reporter=verbose
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+        working-directory: server
+      - run: npx prisma generate
+        working-directory: server
+      - run: pnpm build
+
+  typecheck:
+    name: Type Check (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        include:
+          - name: frontend
+            dir: .
+            setup: ""
+            cmd: pnpm typecheck
+          - name: server
+            dir: server
+            setup: npx prisma generate
+            cmd: npx tsc --noEmit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ${{ matrix.dir == 'server' && 'server/pnpm-lock.yaml' || 'pnpm-lock.yaml' }}
+      - run: pnpm install --frozen-lockfile
+        working-directory: ${{ matrix.dir }}
+      - run: ${{ matrix.setup }}
+        if: matrix.setup != ''
+        working-directory: ${{ matrix.dir }}
+      - run: ${{ matrix.cmd }}
+        working-directory: ${{ matrix.dir }}

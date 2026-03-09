@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 
 interface ResetPasswordData {
   token: string;
@@ -12,28 +12,17 @@ interface PasswordResetResponse {
   sendToLogin: boolean;
 }
 
-export const requestPasswordReset = (email: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post('/api/auth/password', { email })
-      .then(() => resolve())
-      .catch(reject);
-  });
+export const requestPasswordReset = async (email: string): Promise<void> => {
+  await api.post('/api/auth/password', { email });
 };
 
-export const performPasswordReset = (
+export const performPasswordReset = async (
   email: string,
   data: ResetPasswordData,
 ): Promise<PasswordResetResponse> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post('/api/auth/password/reset', { email, ...data })
-      .then((response) =>
-        resolve({
-          redirectTo: response.data.redirect_to,
-          sendToLogin: response.data.send_to_login,
-        }),
-      )
-      .catch(reject);
-  });
+  const response = await api.post<{ redirect_to?: string | null; send_to_login?: boolean }>('/api/auth/password/reset', { email, ...data });
+  return {
+    redirectTo: response.redirect_to,
+    sendToLogin: response.send_to_login ?? false,
+  };
 };

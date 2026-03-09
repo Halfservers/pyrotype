@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useFlash } from '@/lib/hooks';
 import { useServerStore } from '@/store/server';
 
-import { httpErrorToHuman } from '@/lib/api/http';
+import { httpErrorToHuman } from '@/lib/http';
 import { rotateDatabasePassword, type ServerDatabase } from '@/lib/api/server/databases';
 
 const RotatePasswordButton = ({

@@ -1,0 +1,10 @@
+{
+  "createDatabase": "Create Database",
+  "deleteDatabase": "Delete Database",
+  "rotatePassword": "Rotate Password",
+  "databaseName": "Database Name",
+  "connectionsFrom": "Connections From",
+  "hostname": "Hostname",
+  "username": "Username",
+  "password": "Password"
+}

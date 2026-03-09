@@ -1,271 +1,291 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { createTestApp, request } from '../helpers/test-app';
-import { ensureAdminApiKey } from '../helpers/admin-auth';
-import { prisma } from '../../src/config/database';
-import crypto from 'crypto';
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  createTestHono,
+  createMockPrisma,
+  jsonRequest,
+  MOCK_ADMIN,
+} from '../helpers/test-app'
+import { onError } from '../../src/middleware/errorHandler'
+import * as nestController from '../../src/controllers/admin/nestController'
 
-const BASE = '/api/application/nests';
+vi.mock('../../src/utils/crypto', () => ({
+  generateUuid: vi.fn().mockReturnValue('mock-uuid-1234'),
+}))
 
-describe('Admin Nests & Eggs API', () => {
-  let app: ReturnType<typeof createTestApp>;
-  let apiKey: string;
-  let testNestId: number;
-  let testEggId: number;
+function makeMockNest(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    uuid: 'nest-uuid-1',
+    author: 'admin@pyrotype.local',
+    name: 'Minecraft',
+    description: 'Minecraft nest',
+    createdAt: new Date('2025-01-01'),
+    updatedAt: new Date('2025-01-01'),
+    ...overrides,
+  }
+}
 
-  beforeAll(async () => {
-    app = createTestApp();
-    apiKey = await ensureAdminApiKey();
+describe('Admin Nests API (Hono-native)', () => {
+  let prisma: ReturnType<typeof createMockPrisma>
 
-    // Ensure a nest with an egg exists for testing
-    let nest = await prisma.nest.findFirst();
-    if (!nest) {
-      nest = await prisma.nest.create({
-        data: {
-          uuid: crypto.randomUUID(),
-          author: 'test@pyrotype.local',
-          name: 'Test Nest',
-          description: 'A test nest for automated tests',
-        },
-      });
-    }
-    testNestId = nest.id;
+  beforeEach(() => {
+    vi.clearAllMocks()
+    prisma = createMockPrisma()
+  })
 
-    let egg = await prisma.egg.findFirst({ where: { nestId: testNestId } });
-    if (!egg) {
-      egg = await prisma.egg.create({
-        data: {
-          uuid: crypto.randomUUID(),
-          nestId: testNestId,
-          author: 'test@pyrotype.local',
-          name: 'Test Egg',
-          description: 'A test egg',
-          dockerImages: JSON.stringify({ default: 'ghcr.io/test:latest' }),
-          startup: 'java -jar server.jar',
-        },
-      });
-    }
-    testEggId = egg.id;
-  });
+  function buildApp(user = MOCK_ADMIN) {
+    const ctx = createTestHono({ user, prisma })
+    ctx.app.onError(onError)
+    ctx.app.get('/nests', nestController.index)
+    ctx.app.get('/nests/:id', nestController.view)
+    ctx.app.post('/nests', nestController.store)
+    ctx.app.patch('/nests/:id', nestController.update)
+    ctx.app.delete('/nests/:id', nestController.deleteNest)
+    return ctx.app
+  }
 
-  // ── Authentication ──────────────────────────────────────────────────────
+  // ── GET /nests (index) ──────────────────────────────────────────────
 
-  describe('Authentication', () => {
-    it('should return 401 for nests without auth', async () => {
-      const res = await request(app).get(BASE);
-      expect(res.status).toBe(401);
-    });
+  describe('GET /nests', () => {
+    it('should return paginated nest list', async () => {
+      const nest = makeMockNest()
+      prisma.nest.findMany.mockResolvedValue([nest])
+      prisma.nest.count.mockResolvedValue(1)
 
-    it('should return 401 for nest view without auth', async () => {
-      const res = await request(app).get(`${BASE}/${testNestId}`);
-      expect(res.status).toBe(401);
-    });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/nests')
 
-    it('should return 401 for eggs without auth', async () => {
-      const res = await request(app).get(`${BASE}/${testNestId}/eggs`);
-      expect(res.status).toBe(401);
-    });
-
-    it('should return 401 for egg view without auth', async () => {
-      const res = await request(app).get(`${BASE}/${testNestId}/eggs/${testEggId}`);
-      expect(res.status).toBe(401);
-    });
-  });
-
-  // ── GET /nests (index) ─────────────────────────────────────────────────
-
-  describe('GET /api/application/nests', () => {
-    it('should return 200 with paginated nest list', async () => {
-      const res = await request(app)
-        .get(BASE)
-        .set('Authorization', `Bearer ${apiKey}`);
-
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('list');
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(res.body.meta.pagination).toBeDefined();
-      expect(res.body.meta.pagination).toHaveProperty('total');
-      expect(res.body.meta.pagination).toHaveProperty('per_page');
-      expect(res.body.meta.pagination).toHaveProperty('current_page');
-      expect(res.body.meta.pagination).toHaveProperty('total_pages');
-    });
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.object).toBe('list')
+      expect(Array.isArray(json.data)).toBe(true)
+      expect(json.data).toHaveLength(1)
+      expect(json.data[0].object).toBe('nest')
+      expect(json.data[0].attributes.name).toBe('Minecraft')
+      expect(json.meta.pagination).toMatchObject({
+        total: 1,
+        per_page: 50,
+        current_page: 1,
+        total_pages: 1,
+      })
+    })
 
     it('should return nests with correct attributes', async () => {
-      const res = await request(app)
-        .get(BASE)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const nest = makeMockNest()
+      prisma.nest.findMany.mockResolvedValue([nest])
+      prisma.nest.count.mockResolvedValue(1)
 
-      expect(res.status).toBe(200);
-      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/nests')
+      const json = await res.json()
 
-      const nest = res.body.data[0];
-      expect(nest.object).toBe('nest');
-      expect(nest.attributes).toHaveProperty('id');
-      expect(nest.attributes).toHaveProperty('uuid');
-      expect(nest.attributes).toHaveProperty('author');
-      expect(nest.attributes).toHaveProperty('name');
-      expect(nest.attributes).toHaveProperty('description');
-      expect(nest.attributes).toHaveProperty('created_at');
-      expect(nest.attributes).toHaveProperty('updated_at');
-    });
+      const attrs = json.data[0].attributes
+      expect(attrs).toHaveProperty('id')
+      expect(attrs).toHaveProperty('uuid')
+      expect(attrs).toHaveProperty('author')
+      expect(attrs).toHaveProperty('name')
+      expect(attrs).toHaveProperty('description')
+      expect(attrs).toHaveProperty('created_at')
+      expect(attrs).toHaveProperty('updated_at')
+    })
 
-    it('should support pagination', async () => {
-      const res = await request(app)
-        .get(`${BASE}?page=1&per_page=1`)
-        .set('Authorization', `Bearer ${apiKey}`);
+    it('should pass pagination params to prisma', async () => {
+      prisma.nest.findMany.mockResolvedValue([])
+      prisma.nest.count.mockResolvedValue(0)
 
-      expect(res.status).toBe(200);
-      expect(res.body.meta.pagination.per_page).toBe(1);
-      expect(res.body.data.length).toBeLessThanOrEqual(1);
-    });
-  });
+      const app = buildApp()
+      await jsonRequest(app, 'GET', '/nests?page=2&per_page=5')
 
-  // ── GET /nests/:id (view) ──────────────────────────────────────────────
+      expect(prisma.nest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 5, take: 5 }),
+      )
+    })
 
-  describe('GET /api/application/nests/:id', () => {
-    it('should return 200 with nest details', async () => {
-      const res = await request(app)
-        .get(`${BASE}/${testNestId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
+    it('should return empty list when no nests exist', async () => {
+      prisma.nest.findMany.mockResolvedValue([])
+      prisma.nest.count.mockResolvedValue(0)
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('nest');
-      expect(res.body.attributes.id).toBe(testNestId);
-      expect(res.body.attributes).toHaveProperty('uuid');
-      expect(res.body.attributes).toHaveProperty('author');
-      expect(res.body.attributes).toHaveProperty('name');
-    });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/nests')
 
-    it('should return 404 for a non-existent nest', async () => {
-      const res = await request(app)
-        .get(`${BASE}/999999`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.data).toEqual([])
+      expect(json.meta.pagination.total).toBe(0)
+    })
+  })
 
-      expect(res.status).toBe(404);
-      expect(res.body.errors).toBeDefined();
-      expect(res.body.errors[0].code).toBe('NotFoundError');
-    });
-  });
+  // ── GET /nests/:id (view) ───────────────────────────────────────────
 
-  // ── GET /nests/:id/eggs (egg index) ────────────────────────────────────
+  describe('GET /nests/:id', () => {
+    it('should return nest details', async () => {
+      const nest = makeMockNest({ id: 5 })
+      prisma.nest.findUnique.mockResolvedValue(nest)
 
-  describe('GET /api/application/nests/:id/eggs', () => {
-    it('should return 200 with egg list for a valid nest', async () => {
-      const res = await request(app)
-        .get(`${BASE}/${testNestId}/eggs`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/nests/5')
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('list');
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
-    });
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.object).toBe('nest')
+      expect(json.attributes.id).toBe(5)
+      expect(json.attributes).toHaveProperty('uuid')
+      expect(json.attributes).toHaveProperty('author')
+      expect(json.attributes).toHaveProperty('name')
+    })
 
-    it('should return eggs with correct attributes', async () => {
-      const res = await request(app)
-        .get(`${BASE}/${testNestId}/eggs`)
-        .set('Authorization', `Bearer ${apiKey}`);
+    it('should return 404 for non-existent nest', async () => {
+      prisma.nest.findUnique.mockResolvedValue(null)
 
-      expect(res.status).toBe(200);
-      const egg = res.body.data[0];
-      expect(egg.object).toBe('egg');
-      expect(egg.attributes).toHaveProperty('id');
-      expect(egg.attributes).toHaveProperty('uuid');
-      expect(egg.attributes).toHaveProperty('name');
-      expect(egg.attributes).toHaveProperty('nest');
-      expect(egg.attributes).toHaveProperty('author');
-      expect(egg.attributes).toHaveProperty('docker_image');
-      expect(egg.attributes).toHaveProperty('docker_images');
-      expect(egg.attributes).toHaveProperty('config');
-      expect(egg.attributes).toHaveProperty('startup');
-      expect(egg.attributes).toHaveProperty('script');
-      expect(egg.attributes).toHaveProperty('created_at');
-      expect(egg.attributes).toHaveProperty('updated_at');
-      expect(egg.attributes.nest).toBe(testNestId);
-    });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'GET', '/nests/999')
 
-    it('should return 404 for eggs under a non-existent nest', async () => {
-      const res = await request(app)
-        .get(`${BASE}/999999/eggs`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      expect(res.status).toBe(404)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('NotFoundError')
+    })
+  })
 
-      expect(res.status).toBe(404);
-    });
+  // ── POST /nests (store) ─────────────────────────────────────────────
 
-    it('should return empty list for a nest with no eggs', async () => {
-      // Create an empty nest
-      const emptyNest = await prisma.nest.create({
-        data: {
-          uuid: crypto.randomUUID(),
-          author: 'test@pyrotype.local',
-          name: `Empty Nest ${Date.now()}`,
-        },
-      });
+  describe('POST /nests', () => {
+    it('should create a nest and return 201', async () => {
+      const created = makeMockNest({
+        id: 7,
+        uuid: 'mock-uuid-1234',
+        name: 'Rust Games',
+        description: 'Rust game servers',
+      })
+      prisma.nest.create.mockResolvedValue(created)
 
-      const res = await request(app)
-        .get(`${BASE}/${emptyNest.id}/eggs`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'POST', '/nests', {
+        name: 'Rust Games',
+        description: 'Rust game servers',
+      })
 
-      expect(res.status).toBe(200);
-      expect(res.body.data).toEqual([]);
-    });
-  });
+      expect(res.status).toBe(201)
+      const json = await res.json()
+      expect(json.object).toBe('nest')
+      expect(json.attributes.name).toBe('Rust Games')
+      expect(json.attributes.description).toBe('Rust game servers')
+    })
 
-  // ── GET /nests/:id/eggs/:eggId (egg view) ─────────────────────────────
+    it('should pass null for missing description', async () => {
+      const created = makeMockNest({ id: 8, name: 'Source', description: null })
+      prisma.nest.create.mockResolvedValue(created)
 
-  describe('GET /api/application/nests/:id/eggs/:eggId', () => {
-    it('should return 200 with egg details', async () => {
-      const res = await request(app)
-        .get(`${BASE}/${testNestId}/eggs/${testEggId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      await jsonRequest(app, 'POST', '/nests', { name: 'Source' })
 
-      expect(res.status).toBe(200);
-      expect(res.body.object).toBe('egg');
-      expect(res.body.attributes.id).toBe(testEggId);
-      expect(res.body.attributes.nest).toBe(testNestId);
-      expect(res.body.attributes).toHaveProperty('config');
-      expect(res.body.attributes.config).toHaveProperty('files');
-      expect(res.body.attributes.config).toHaveProperty('startup');
-      expect(res.body.attributes.config).toHaveProperty('stop');
-      expect(res.body.attributes.config).toHaveProperty('logs');
-      expect(res.body.attributes).toHaveProperty('script');
-      expect(res.body.attributes.script).toHaveProperty('privileged');
-      expect(res.body.attributes.script).toHaveProperty('install');
-      expect(res.body.attributes.script).toHaveProperty('entry');
-      expect(res.body.attributes.script).toHaveProperty('container');
-    });
+      expect(prisma.nest.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          uuid: 'mock-uuid-1234',
+          author: 'custom@local',
+          name: 'Source',
+          description: null,
+        }),
+      })
+    })
+  })
 
-    it('should return 404 for a non-existent egg', async () => {
-      const res = await request(app)
-        .get(`${BASE}/${testNestId}/eggs/999999`)
-        .set('Authorization', `Bearer ${apiKey}`);
+  // ── PATCH /nests/:id (update) ───────────────────────────────────────
 
-      expect(res.status).toBe(404);
-      expect(res.body.errors[0].code).toBe('NotFoundError');
-    });
+  describe('PATCH /nests/:id', () => {
+    it('should update nest fields and return 200', async () => {
+      const existing = makeMockNest({ id: 3 })
+      const updated = makeMockNest({ id: 3, name: 'Updated Nest' })
+      prisma.nest.findUnique.mockResolvedValue(existing)
+      prisma.nest.update.mockResolvedValue(updated)
 
-    it('should return 404 for an egg under the wrong nest', async () => {
-      // Create a second nest with no eggs -- the testEggId belongs to testNestId
-      const otherNest = await prisma.nest.create({
-        data: {
-          uuid: crypto.randomUUID(),
-          author: 'test@pyrotype.local',
-          name: `Other Nest ${Date.now()}`,
-        },
-      });
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/nests/3', { name: 'Updated Nest' })
 
-      const res = await request(app)
-        .get(`${BASE}/${otherNest.id}/eggs/${testEggId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.object).toBe('nest')
+      expect(json.attributes.name).toBe('Updated Nest')
+    })
 
-      expect(res.status).toBe(404);
-    });
+    it('should update description', async () => {
+      const existing = makeMockNest({ id: 3 })
+      const updated = makeMockNest({ id: 3, description: 'New desc' })
+      prisma.nest.findUnique.mockResolvedValue(existing)
+      prisma.nest.update.mockResolvedValue(updated)
 
-    it('should return 404 when nest does not exist', async () => {
-      const res = await request(app)
-        .get(`${BASE}/999999/eggs/${testEggId}`)
-        .set('Authorization', `Bearer ${apiKey}`);
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/nests/3', { description: 'New desc' })
 
-      expect(res.status).toBe(404);
-    });
-  });
-});
+      expect(res.status).toBe(200)
+      const json = await res.json()
+      expect(json.attributes.description).toBe('New desc')
+    })
+
+    it('should return 404 for non-existent nest', async () => {
+      prisma.nest.findUnique.mockResolvedValue(null)
+
+      const app = buildApp()
+      const res = await jsonRequest(app, 'PATCH', '/nests/999', { name: 'Ghost' })
+
+      expect(res.status).toBe(404)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('NotFoundError')
+    })
+  })
+
+  // ── DELETE /nests/:id ───────────────────────────────────────────────
+
+  describe('DELETE /nests/:id', () => {
+    it('should delete a nest without eggs or servers and return 204', async () => {
+      prisma.nest.findUnique.mockResolvedValue(
+        makeMockNest({ id: 4, eggs: [] }),
+      )
+      prisma.server.count.mockResolvedValue(0)
+      prisma.nest.delete.mockResolvedValue({})
+
+      const app = buildApp()
+      const res = await jsonRequest(app, 'DELETE', '/nests/4')
+
+      expect(res.status).toBe(204)
+      expect(prisma.nest.delete).toHaveBeenCalledWith({ where: { id: 4 } })
+    })
+
+    it('should return 404 for non-existent nest', async () => {
+      prisma.nest.findUnique.mockResolvedValue(null)
+
+      const app = buildApp()
+      const res = await jsonRequest(app, 'DELETE', '/nests/999')
+
+      expect(res.status).toBe(404)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('NotFoundError')
+    })
+
+    it('should return 409 when nest has eggs', async () => {
+      prisma.nest.findUnique.mockResolvedValue(
+        makeMockNest({ id: 4, eggs: [{ id: 1 }] }),
+      )
+
+      const app = buildApp()
+      const res = await jsonRequest(app, 'DELETE', '/nests/4')
+
+      expect(res.status).toBe(409)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('ConflictError')
+    })
+
+    it('should return 409 when nest has active servers', async () => {
+      prisma.nest.findUnique.mockResolvedValue(
+        makeMockNest({ id: 4, eggs: [] }),
+      )
+      prisma.server.count.mockResolvedValue(3)
+
+      const app = buildApp()
+      const res = await jsonRequest(app, 'DELETE', '/nests/4')
+
+      expect(res.status).toBe(409)
+      const json = await res.json()
+      expect(json.errors[0].code).toBe('ConflictError')
+    })
+  })
+})

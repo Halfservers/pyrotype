@@ -1,4 +1,5 @@
-import http, { type FractalResponseData } from '@/lib/api/http';
+import { api } from '@/lib/http';
+import type { FractalResponseData } from '@/types/api';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 
 export interface Subuser {
@@ -23,36 +24,25 @@ const rawDataToServerSubuser = (data: FractalResponseData): Subuser => ({
   can: (permission) => (data.attributes.permissions || []).indexOf(permission) >= 0,
 });
 
-export const getServerSubusers = (uuid: string): Promise<Subuser[]> => {
-  return new Promise((resolve, reject) => {
-    http
-      .get(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/users`)
-      .then(({ data }) => resolve((data.data || []).map(rawDataToServerSubuser)))
-      .catch(reject);
-  });
+export const getServerSubusers = async (uuid: string): Promise<Subuser[]> => {
+  const data: any = await api.get(
+    `/api/client/servers/${getGlobalDaemonType()}/${uuid}/users`,
+  );
+  return (data.data || []).map(rawDataToServerSubuser);
 };
 
-export const createOrUpdateSubuser = (
+export const createOrUpdateSubuser = async (
   uuid: string,
   params: { email: string; permissions: string[] },
   subuser?: Subuser,
 ): Promise<Subuser> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post(
-        `/api/client/servers/${getGlobalDaemonType()}/${uuid}/users${subuser ? `/${subuser.uuid}` : ''}`,
-        { ...params },
-      )
-      .then((data) => resolve(rawDataToServerSubuser(data.data)))
-      .catch(reject);
-  });
+  const data: any = await api.post(
+    `/api/client/servers/${getGlobalDaemonType()}/${uuid}/users${subuser ? `/${subuser.uuid}` : ''}`,
+    { ...params },
+  );
+  return rawDataToServerSubuser(data);
 };
 
-export const deleteSubuser = (uuid: string, userId: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .delete(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/users/${userId}`)
-      .then(() => resolve())
-      .catch(reject);
-  });
+export const deleteSubuser = async (uuid: string, userId: string): Promise<void> => {
+  await api.delete(`/api/client/servers/${getGlobalDaemonType()}/${uuid}/users/${userId}`);
 };

@@ -1,7 +1,9 @@
-import type { Request, Response, NextFunction } from 'express';
-import { prisma } from '../../config/database';
-import { fractalItem } from '../../utils/response';
-import { NotFoundError } from '../../utils/errors';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../types/env'
+import { fractalItem } from '../../utils/response'
+import { NotFoundError } from '../../utils/errors'
+
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
 function transformServer(server: any) {
   return {
@@ -40,17 +42,14 @@ function transformServer(server: any) {
     },
     created_at: server.createdAt.toISOString(),
     updated_at: server.updatedAt.toISOString(),
-  };
+  }
 }
 
-export async function index(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const externalId = req.params.externalId as string;
-    const server = await prisma.server.findFirst({ where: { externalId } });
-    if (!server) throw new NotFoundError('Server not found');
+export async function index(c: AppContext) {
+  const prisma = c.var.prisma
+  const externalId = c.req.param('externalId')
+  const server = await prisma.server.findFirst({ where: { externalId } })
+  if (!server) throw new NotFoundError('Server not found')
 
-    res.json(fractalItem('server', transformServer(server)));
-  } catch (err) {
-    next(err);
-  }
+  return c.json(fractalItem('server', transformServer(server)))
 }

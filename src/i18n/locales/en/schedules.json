@@ -1,0 +1,14 @@
+{
+  "createSchedule": "Create Schedule",
+  "editSchedule": "Edit Schedule",
+  "deleteSchedule": "Delete Schedule",
+  "trigger": "Trigger",
+  "cronExpression": "Cron Expression",
+  "minute": "Minute",
+  "hour": "Hour",
+  "dayOfMonth": "Day of Month",
+  "month": "Month",
+  "dayOfWeek": "Day of Week",
+  "isActive": "Active",
+  "onlyWhenOnline": "Only When Online"
+}

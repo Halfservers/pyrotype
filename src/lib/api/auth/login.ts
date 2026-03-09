@@ -1,10 +1,10 @@
-import http from '@/lib/api/http';
+import { api, ApiError } from '@/lib/http';
 import type { UserData } from '@/store/slices/user';
 
 export interface LoginData {
   user: string;
   password: string;
-  [key: string]: any;
+  [key: string]: string;
 }
 
 export interface LoginResponse {
@@ -15,7 +15,18 @@ export interface LoginResponse {
   error?: string;
 }
 
-function transformUser(attrs: any): UserData {
+interface RawUserAttributes {
+  uuid: string;
+  username: string;
+  email: string;
+  language: string;
+  root_admin: boolean;
+  use_totp: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+function transformUser(attrs: RawUserAttributes): UserData {
   return {
     uuid: attrs.uuid,
     username: attrs.username,
@@ -30,15 +41,25 @@ function transformUser(attrs: any): UserData {
 
 export default async (data: LoginData): Promise<LoginResponse> => {
   try {
-    await http.get('/api/sanctum/csrf-cookie');
+    await api.get('/api/sanctum/csrf-cookie');
 
-    const response = await http.post('/api/auth/login', { ...data });
+    interface RawLoginData {
+      complete?: boolean;
+      intended?: string;
+      confirmation_token?: string;
+      confirmationToken?: string;
+      error?: string;
+      message?: string;
+      user?: { attributes: RawUserAttributes };
+    }
 
-    if (!response.data || typeof response.data !== 'object') {
+    const response = await api.post<RawLoginData & { data?: RawLoginData }>('/api/auth/login', { ...data });
+
+    if (!response || typeof response !== 'object') {
       throw new Error('Invalid server response format');
     }
 
-    const d = response.data.data ?? response.data;
+    const d: RawLoginData = response.data ?? response;
 
     return {
       complete: d.complete ?? false,
@@ -47,18 +68,18 @@ export default async (data: LoginData): Promise<LoginResponse> => {
       user: d.user?.attributes ? transformUser(d.user.attributes) : undefined,
       error: d.error ?? d.message,
     };
-  } catch (error: any) {
-    const loginError = new Error(
-      error.response?.data?.error ??
-        error.response?.data?.message ??
-        error.message ??
-        'Login failed. Please try again.',
-    ) as any;
+  } catch (error: unknown) {
+    if (error instanceof ApiError) {
+      const loginError = new Error(
+        error.errors[0]?.detail ?? error.message ?? 'Login failed. Please try again.',
+      ) as Error & { response?: unknown; detail?: string; code?: string };
+      loginError.response = { status: error.status, data: { errors: error.errors } };
+      loginError.detail = error.errors[0]?.detail;
+      loginError.code = error.errors[0]?.code;
+      throw loginError;
+    }
 
-    loginError.response = error.response;
-    loginError.detail = error.response?.data?.errors?.[0]?.detail;
-    loginError.code = error.response?.data?.errors?.[0]?.code;
-
-    throw loginError;
+    const message = error instanceof Error ? error.message : 'Login failed. Please try again.';
+    throw new Error(message);
   }
 };

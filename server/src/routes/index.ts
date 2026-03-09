@@ -1,32 +1,45 @@
-import { Router } from 'express';
-import { authRoutes } from './auth';
-import { accountRoutes } from './client/account';
-import { clientRoutes } from './client/index';
-import { adminRoutes } from './admin';
-import { elytraServerRoutes } from './client/servers/elytra';
-import { remoteRoutes } from './remote';
+import type { Hono } from 'hono'
+import type { Env, HonoVariables } from '../types/env'
+import { authApp } from './auth'
+import { clientApp } from './client'
+import { accountApp } from './client/account'
+import { adminApp } from './admin'
+import { remoteApp } from './remote'
 
-export const routes = Router();
+type AppType = { Bindings: Env; Variables: HonoVariables }
 
-// Health check
-routes.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', version: '1.0.0' });
-});
+export function registerRoutes(app: Hono<AppType>) {
+  // Health check
+  app.get('/api/health', (c) => c.json({ status: 'ok', version: '1.0.0' }))
 
-// Auth routes (login, logout, password reset)
-routes.use(authRoutes);
+  // Auth
+  app.route('/api/auth', authApp)
 
-// Client account routes (authenticated)
-routes.use('/api/client/account', accountRoutes);
+  // CSRF cookie endpoint
+  app.get('/api/sanctum/csrf-cookie', (c) => c.body(null, 204))
 
-// Client routes (servers, nests, etc.)
-routes.use('/api/client', clientRoutes);
+  // Client account
+  app.route('/api/client/account', accountApp)
 
-// Elytra server routes — /api/client/servers/elytra/:server/*
-routes.use('/api/client/servers/elytra/:server', elytraServerRoutes);
+  // Client (servers, nests, etc.)
+  app.route('/api/client', clientApp)
 
-// Remote API — daemon-to-panel communication — /api/remote/*
-routes.use('/api/remote', remoteRoutes);
+  // Remote API — daemon-to-panel communication
+  app.route('/api/remote', remoteApp)
 
-// Application (admin) API — /api/application/*
-routes.use('/api/application', adminRoutes);
+  // Application (admin) API
+  app.route('/api/application', adminApp)
+
+  // Catch-all: return API info for non-API routes
+  app.all('*', (c) =>
+    c.json(
+      {
+        name: 'Pyrotype API',
+        version: '1.0.0',
+        docs: '/api/health',
+        endpoints: ['/api/auth', '/api/client', '/api/application', '/api/remote'],
+      },
+      404,
+    ),
+  )
+}

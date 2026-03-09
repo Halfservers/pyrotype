@@ -1,0 +1,10 @@
+{
+  "createBackup": "Create Backup",
+  "restoreBackup": "Restore Backup",
+  "deleteBackup": "Delete Backup",
+  "lockBackup": "Lock Backup",
+  "renameBackup": "Rename Backup",
+  "backupName": "Backup Name",
+  "ignoredFiles": "Ignored Files",
+  "noBackups": "No backups found"
+}

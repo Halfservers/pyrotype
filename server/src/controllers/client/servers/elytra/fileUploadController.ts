@@ -1,34 +1,25 @@
-import type { Request, Response, NextFunction } from 'express';
-import crypto from 'crypto';
-import { config } from '../../../../config';
+import type { Context } from 'hono'
+import type { Env, HonoVariables } from '../../../../types/env'
+import { generateDaemonJWT } from '../../../../services/daemon/jwt'
+import { getDaemonBaseUrl } from '../../../../services/daemon/proxy'
 
-export async function getUploadUrl(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try {
-    const server = req.server!;
-    const user = req.user!;
+type AppContext = Context<{ Bindings: Env; Variables: HonoVariables }>
 
-    // Generate a signed upload token for the daemon.
-    // In production, this creates a JWT with server_uuid claim
-    // that the daemon validates before accepting the upload.
-    const payload = {
-      user_id: user.id,
-      server_uuid: server.uuid,
-      exp: Math.floor(Date.now() / 1000) + 900, // 15 minutes
-    };
+export async function getUploadUrl(c: AppContext) {
+  const server = c.var.server!
+  const node = server.node!
+  const user = c.var.user!
 
-    const token = crypto
-      .createHmac('sha256', config.JWT_SECRET)
-      .update(JSON.stringify(payload))
-      .digest('hex');
+  const token = await generateDaemonJWT(
+    c.env.APP_KEY,
+    { server_uuid: server.uuid, user_id: user.id },
+    900,
+  )
 
-    // In production, the URL would come from the node's connection address.
-    const url = `/upload/file?token=${token}`;
+  const url = `${getDaemonBaseUrl(node)}/upload/file?token=${token}`
 
-    res.json({
-      object: 'signed_url',
-      attributes: { url },
-    });
-  } catch (err) {
-    next(err);
-  }
+  return c.json({
+    object: 'signed_url',
+    attributes: { url },
+  })
 }

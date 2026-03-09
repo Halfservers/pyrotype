@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 
 export interface ApiKey {
   identifier: string;
@@ -16,40 +16,25 @@ export const rawDataToApiKey = (data: any): ApiKey => ({
   lastUsedAt: data.last_used_at ? new Date(data.last_used_at) : null,
 });
 
-export const getApiKeys = (): Promise<ApiKey[]> => {
-  return new Promise((resolve, reject) => {
-    http
-      .get('/api/client/account/api-keys')
-      .then(({ data }) => resolve((data.data || []).map((d: any) => rawDataToApiKey(d.attributes))))
-      .catch(reject);
-  });
+export const getApiKeys = async (): Promise<ApiKey[]> => {
+  const data: any = await api.get('/api/client/account/api-keys');
+  return (data.data || []).map((d: any) => rawDataToApiKey(d.attributes));
 };
 
-export const createApiKey = (
+export const createApiKey = async (
   description: string,
   allowedIps: string,
 ): Promise<ApiKey & { secretToken: string }> => {
-  return new Promise((resolve, reject) => {
-    http
-      .post('/api/client/account/api-keys', {
-        description,
-        allowed_ips: allowedIps.length > 0 ? allowedIps.split('\n') : [],
-      })
-      .then(({ data }) =>
-        resolve({
-          ...rawDataToApiKey(data.attributes),
-          secretToken: data.meta?.secret_token ?? '',
-        }),
-      )
-      .catch(reject);
+  const data: any = await api.post('/api/client/account/api-keys', {
+    description,
+    allowed_ips: allowedIps.length > 0 ? allowedIps.split('\n') : [],
   });
+  return {
+    ...rawDataToApiKey(data.attributes),
+    secretToken: data.meta?.secret_token ?? '',
+  };
 };
 
-export const deleteApiKey = (identifier: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .delete(`/api/client/account/api-keys/${identifier}`)
-      .then(() => resolve())
-      .catch(reject);
-  });
+export const deleteApiKey = async (identifier: string): Promise<void> => {
+  await api.delete(`/api/client/account/api-keys/${identifier}`);
 };

@@ -1,4 +1,4 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 import { getGlobalDaemonType } from '@/lib/api/server/get-server';
 
 export interface EggPreview {
@@ -49,11 +49,10 @@ export const previewEggChange = async (
   nestId: number,
 ): Promise<EggPreview> => {
   const daemonType = getGlobalDaemonType();
-  const { data } = await http.post(
+  return api.post<EggPreview>(
     `/api/client/servers/${daemonType}/${uuid}/settings/egg/preview`,
     { egg_id: eggId, nest_id: nestId },
   );
-  return data;
 };
 
 export const applyEggChange = async (
@@ -61,11 +60,10 @@ export const applyEggChange = async (
   data: ApplyEggChangeRequest,
 ): Promise<ApplyEggChangeResponse> => {
   const daemonType = getGlobalDaemonType();
-  const { data: response } = await http.post(
+  return api.post<ApplyEggChangeResponse>(
     `/api/client/servers/${daemonType}/${uuid}/settings/egg/apply`,
     data,
   );
-  return response;
 };
 
 export const applyEggChangeSync = async (
@@ -75,7 +73,7 @@ export const applyEggChangeSync = async (
   const daemonType = getGlobalDaemonType();
 
   if (daemonType?.toLowerCase() === 'elytra') {
-    await http.post(`/api/client/servers/${daemonType}/${uuid}/settings/egg/apply`, data);
+    await api.post(`/api/client/servers/${daemonType}/${uuid}/settings/egg/apply`, data);
     return;
   }
 
@@ -89,43 +87,44 @@ export const applyEggChangeSync = async (
       should_wipe = false,
     } = data;
 
-    await http.put(`/api/client/servers/${daemonType}/${uuid}/settings/egg`, {
+    await api.put(`/api/client/servers/${daemonType}/${uuid}/settings/egg`, {
       egg_id,
       nest_id,
     });
 
     if (docker_image) {
-      await http.put(`/api/client/servers/${daemonType}/${uuid}/settings/docker-image`, {
+      await api.put(`/api/client/servers/${daemonType}/${uuid}/settings/docker-image`, {
         docker_image,
       });
     }
 
     const envPromises = Object.entries(environment).map(([key, value]) =>
-      http.put(`/api/client/servers/${daemonType}/${uuid}/startup/variable`, { key, value }),
+      api.put(`/api/client/servers/${daemonType}/${uuid}/startup/variable`, { key, value }),
     );
     await Promise.all(envPromises);
 
     if (should_backup) {
-      await http.post(`/api/client/servers/${daemonType}/${uuid}/backups`, {
+      await api.post(`/api/client/servers/${daemonType}/${uuid}/backups`, {
         name: `Software Change Backup - ${new Date().toISOString()}`,
         is_locked: false,
       });
     }
 
     if (should_wipe) {
-      const filesResponse = await http.get(
-        `/api/client/servers/${daemonType}/${uuid}/files/list?directory=/`,
+      const filesResponse: any = await api.get(
+        `/api/client/servers/${daemonType}/${uuid}/files/list`,
+        { directory: '/' },
       );
-      const files = filesResponse.data?.data || [];
+      const files = filesResponse?.data || [];
       if (files.length > 0) {
         const fileNames = files.map((file: any) => file.name);
-        await http.post(`/api/client/servers/${daemonType}/${uuid}/files/delete`, {
+        await api.post(`/api/client/servers/${daemonType}/${uuid}/files/delete`, {
           root: '/',
           files: fileNames,
         });
       }
     }
 
-    await http.post(`/api/client/servers/${daemonType}/${uuid}/settings/reinstall`);
+    await api.post(`/api/client/servers/${daemonType}/${uuid}/settings/reinstall`);
   }
 };

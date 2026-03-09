@@ -1,10 +1,5 @@
-import http from '@/lib/api/http';
+import { api } from '@/lib/http';
 
-export default (email: string, password: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    http
-      .put('/api/client/account/email', { email, password })
-      .then(() => resolve())
-      .catch(reject);
-  });
+export default async (email: string, password: string): Promise<void> => {
+  await api.put('/api/client/account/email', { email, password });
 };

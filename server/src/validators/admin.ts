@@ -76,3 +76,92 @@ export const createAllocationSchema = z.object({
   ports: z.array(z.string()),
   alias: z.string().optional(),
 });
+
+export const createNestSchema = z.object({
+  name: z.string().min(1).max(191),
+  description: z.string().optional().nullable(),
+});
+
+export const updateNestSchema = z.object({
+  name: z.string().min(1).max(191).optional(),
+  description: z.string().optional().nullable(),
+});
+
+export const createEggSchema = z.object({
+  name: z.string().min(1).max(191),
+  description: z.string().optional().nullable(),
+  docker_images: z.string().optional(),
+  startup: z.string().optional().nullable(),
+  config_files: z.string().optional().nullable(),
+  script_install: z.string().optional().nullable(),
+  script_container: z.string().optional().default('alpine:3.4'),
+  script_entry: z.string().optional().default('ash'),
+});
+
+export const updateEggSchema = z.object({
+  name: z.string().min(1).max(191).optional(),
+  description: z.string().optional().nullable(),
+  docker_images: z.string().optional(),
+  startup: z.string().optional().nullable(),
+  config_files: z.string().optional().nullable(),
+  script_install: z.string().optional().nullable(),
+  script_container: z.string().optional(),
+  script_entry: z.string().optional(),
+});
+
+export const createEggVariableSchema = z.object({
+  name: z.string().min(1).max(191),
+  description: z.string().optional().default(''),
+  env_variable: z.string().min(1).regex(/^[A-Z_]+$/, 'Environment variable must be uppercase letters and underscores only'),
+  default_value: z.string().optional().default(''),
+  user_viewable: z.boolean().optional().default(false),
+  user_editable: z.boolean().optional().default(false),
+  rules: z.string().optional().default(''),
+});
+
+export const updateEggVariableSchema = z.object({
+  name: z.string().min(1).max(191).optional(),
+  description: z.string().optional(),
+  env_variable: z.string().min(1).regex(/^[A-Z_]+$/, 'Environment variable must be uppercase letters and underscores only').optional(),
+  default_value: z.string().optional(),
+  user_viewable: z.boolean().optional(),
+  user_editable: z.boolean().optional(),
+  rules: z.string().optional(),
+});
+
+export const createDatabaseHostSchema = z.object({
+  name: z.string().min(1).max(191),
+  host: z.string().min(1).max(191),
+  port: z.number().int().min(1).max(65535).default(3306),
+  username: z.string().min(1).max(191),
+  password: z.string().min(1),
+  max_databases: z.number().int().min(0).optional().nullable(),
+  node_id: z.number().int().optional().nullable(),
+});
+
+export const updateDatabaseHostSchema = createDatabaseHostSchema.partial();
+
+export const createMountSchema = z.object({
+  name: z.string().min(1).max(191),
+  description: z.string().optional().default(''),
+  source: z.string().min(1).max(191),
+  target: z.string().min(1).max(191),
+  read_only: z.boolean().optional().default(false),
+  user_mountable: z.boolean().optional().default(false),
+})
+
+export const updateMountSchema = createMountSchema.partial()
+
+export const attachEggsSchema = z.object({ eggs: z.array(z.number().int()) })
+
+export const attachNodesSchema = z.object({ nodes: z.array(z.number().int()) })
+
+export const createDomainSchema = z.object({
+  name: z.string().min(1).max(191),
+  dns_provider: z.string().min(1).max(50).default('cloudflare'),
+  dns_config: z.record(z.string(), z.unknown()).optional().default({}),
+  is_active: z.boolean().optional().default(true),
+  is_default: z.boolean().optional().default(false),
+})
+
+export const updateDomainSchema = createDomainSchema.partial()
